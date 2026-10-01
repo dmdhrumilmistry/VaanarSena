@@ -85,9 +85,24 @@ func open(ctx context.Context) (*config.Config, *store.Store, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	st, err := store.Open(ctx, cfg.DatabaseURL)
-	if err != nil {
-		return nil, nil, err
+	// The database often starts alongside the server (compose, Kubernetes), so
+	// wait for it rather than crash-looping.
+	var st *store.Store
+	deadline := time.Now().Add(2 * time.Minute)
+	for {
+		st, err = store.Open(ctx, cfg.DatabaseURL)
+		if err == nil {
+			break
+		}
+		if time.Now().After(deadline) || ctx.Err() != nil {
+			return nil, nil, err
+		}
+		fmt.Fprintln(os.Stderr, "waiting for database:", err)
+		select {
+		case <-ctx.Done():
+			return nil, nil, ctx.Err()
+		case <-time.After(3 * time.Second):
+		}
 	}
 	if err := st.Migrate(ctx); err != nil {
 		st.Close()
