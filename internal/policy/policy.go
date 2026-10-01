@@ -18,6 +18,7 @@ type Document struct {
 	WiFi         []WiFi        `json:"wifi,omitempty"`
 	OSUpdates    *OSUpdates    `json:"osUpdates,omitempty"`
 	Apps         []App         `json:"apps,omitempty"`
+	Custom       *Custom       `json:"custom,omitempty"`
 }
 
 // Passcode controls the device or work-profile unlock secret.
@@ -123,6 +124,11 @@ func (d *Document) Validate() error {
 			errs = append(errs, fmt.Errorf("apps[%d].install must be required, available or blocked", i))
 		}
 	}
+	if d.Custom != nil {
+		if err := d.Custom.validate(); err != nil {
+			errs = append(errs, err)
+		}
+	}
 	if u := d.OSUpdates; u != nil && (u.DeferDays < 0 || u.DeferDays > 90) {
 		errs = append(errs, errors.New("osUpdates.deferDays must be 0-90"))
 	}
@@ -173,6 +179,7 @@ func Merge(docs ...*Document) *Document {
 			wifi[w.SSID] = len(out.WiFi)
 			out.WiFi = append(out.WiFi, w)
 		}
+		out.Custom = mergeCustom(out.Custom, d.Custom)
 		for _, a := range d.Apps {
 			k := a.Platform + "/" + a.ID
 			if i, ok := apps[k]; ok {

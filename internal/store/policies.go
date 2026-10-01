@@ -7,49 +7,15 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// --- groups ---
-
-// CreateGroup inserts a group.
-func (s *Store) CreateGroup(ctx context.Context, name, desc string) (*Group, error) {
-	var g Group
-	err := s.DB.QueryRow(ctx, `INSERT INTO groups (name, description) VALUES ($1, $2) RETURNING id, name, description, created_at`,
-		name, desc).Scan(&g.ID, &g.Name, &g.Description, &g.CreatedAt)
-	return &g, err
-}
-
-// ListGroups returns groups with member counts.
-func (s *Store) ListGroups(ctx context.Context) ([]*Group, error) {
-	rows, err := s.DB.Query(ctx, `SELECT g.id, g.name, g.description, g.created_at, count(m.device_id)
-		FROM groups g LEFT JOIN group_members m ON m.group_id = g.id GROUP BY g.id ORDER BY g.name`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []*Group
-	for rows.Next() {
-		var g Group
-		if err := rows.Scan(&g.ID, &g.Name, &g.Description, &g.CreatedAt, &g.DeviceCount); err != nil {
-			return nil, err
-		}
-		out = append(out, &g)
-	}
-	return out, rows.Err()
-}
-
-// DeleteGroup removes a group.
-func (s *Store) DeleteGroup(ctx context.Context, id string) error {
-	return s.exec1(ctx, `DELETE FROM groups WHERE id = $1`, id)
-}
-
 // --- policies ---
 
-const policyCols = `p.id, p.name, p.description, p.priority, p.document, p.version, p.created_at, p.updated_at,
+const policyCols = `p.id, p.name, p.description, p.priority, p.document, p.version, p.managed_by, p.created_at, p.updated_at,
 	COALESCE(array_agg(a.group_id) FILTER (WHERE a.group_id IS NOT NULL), '{}')::text[],
 	COALESCE(array_agg(a.device_id) FILTER (WHERE a.device_id IS NOT NULL), '{}')::text[]`
 
 func scanPolicy(row interface{ Scan(...any) error }) (*Policy, error) {
 	var p Policy
-	err := row.Scan(&p.ID, &p.Name, &p.Description, &p.Priority, &p.Document, &p.Version, &p.CreatedAt, &p.UpdatedAt,
+	err := row.Scan(&p.ID, &p.Name, &p.Description, &p.Priority, &p.Document, &p.Version, &p.ManagedBy, &p.CreatedAt, &p.UpdatedAt,
 		&p.GroupIDs, &p.DeviceIDs)
 	return &p, notFound(err)
 }
@@ -63,12 +29,12 @@ func (s *Store) SavePolicy(ctx context.Context, p *Policy) (*Policy, error) {
 	defer tx.Rollback(ctx) //nolint:errcheck
 
 	if p.ID == "" {
-		err = tx.QueryRow(ctx, `INSERT INTO policies (name, description, priority, document) VALUES ($1, $2, $3, $4) RETURNING id`,
-			p.Name, p.Description, p.Priority, p.Document).Scan(&p.ID)
+		err = tx.QueryRow(ctx, `INSERT INTO policies (name, description, priority, document, managed_by) VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+			p.Name, p.Description, p.Priority, p.Document, p.ManagedBy).Scan(&p.ID)
 	} else {
 		var tag interface{ RowsAffected() int64 }
-		tag, err = tx.Exec(ctx, `UPDATE policies SET name = $2, description = $3, priority = $4, document = $5,
-			version = version + 1, updated_at = now() WHERE id = $1`, p.ID, p.Name, p.Description, p.Priority, p.Document)
+		tag, err = tx.Exec(ctx, `UPDATE policies SET name = $2, description = $3, priority = $4, document = $5, managed_by = $6,
+			version = version + 1, updated_at = now() WHERE id = $1`, p.ID, p.Name, p.Description, p.Priority, p.Document, p.ManagedBy)
 		if err == nil && tag.RowsAffected() == 0 {
 			return nil, ErrNotFound
 		}

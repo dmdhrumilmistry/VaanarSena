@@ -54,7 +54,7 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
-      - run: make agents VERSION=${GITHUB_REF_NAME}
+      - run: make agents cli VERSION=${GITHUB_REF_NAME}
       - run: cd dist && sha256sum * > SHA256SUMS
       - uses: softprops/action-gh-release@v2
         with:

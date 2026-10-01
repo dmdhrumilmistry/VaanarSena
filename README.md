@@ -28,8 +28,57 @@ and one REST API.
 - **One policy, every platform.** Write a platform-neutral policy (passcode,
   encryption, restrictions, Wi-Fi, OS updates, apps); each driver translates it
   into configuration profiles, Policy CSP nodes or AMAPI policies.
+- **Custom payloads.** When the neutral model is not enough, ship raw Apple
+  payloads or a whole `.mobileconfig`, any Windows CSP node (OMA-URI), or raw
+  Android Management API fields. Corporate-only unless you opt in.
+- **Static and smart groups.** Smart (dynamic) groups compute membership from
+  rules over device fields, tags and inventory facts, such as
+  "iPhones below iOS 17" or "Linux laptops without disk encryption", and
+  update continuously. Configuration follows membership.
+- **Blueprints.** Bundle policies, an inline policy and onboarding steps
+  (install apps, run scripts, update the OS), target them at groups, and every
+  device that falls in scope is onboarded exactly once.
+- **Configuration as code.** Groups, policies and blueprints are YAML
+  manifests: `vsctl apply`/`diff`/`export`, `POST /api/v1/apply`, or a GitOps
+  directory the server reconciles itself. Validated as a whole, idempotent,
+  with owner-scoped prune.
 - **Auditable.** Every admin action lands in an append-only audit log that the
   database itself refuses to modify.
+
+## Configuration as code
+
+```yaml
+# fleet.yaml
+apiVersion: vaanarsena.io/v1
+kind: Group
+metadata: {name: ios-needs-update}
+spec:
+  kind: smart
+  rules:
+    match: all
+    conditions:
+      - {field: platform, op: in, value: [ios, ipados]}
+      - {field: osVersion, op: version_lt, value: "17.0"}
+---
+apiVersion: vaanarsena.io/v1
+kind: Blueprint
+metadata: {name: ios-update-push}
+spec:
+  groups: [ios-needs-update]
+  policy:
+    passcode: {required: true, minLength: 6}
+  onEnroll:
+    - {type: os_update}
+```
+
+```bash
+export VS_SERVER=https://mdm.example.com VS_TOKEN=vsat_...
+vsctl diff  -f fleet.yaml      # what would change
+vsctl apply -f fleet.yaml      # created/updated/unchanged per resource
+```
+
+More in [docs/manifests.md](docs/manifests.md) and
+[examples/manifests](examples/manifests).
 
 ## Quick start (evaluation)
 
@@ -43,8 +92,9 @@ Linux and Windows management work out of the box. Apple needs an APNs push
 certificate, and Android and ChromeOS need a Google service account. See
 [docs/platforms.md](docs/platforms.md).
 
-> Real devices need HTTPS on a public DNS name. Put VaanarSena behind a TLS
-> ingress (the Helm chart does this) or set `VS_TLS_CERT_FILE` / `VS_TLS_KEY_FILE`.
+> Real devices need HTTPS on a public DNS name. For production on a single
+> VM, [deploy/caddy](deploy/caddy) adds automatic Let's Encrypt TLS with
+> client certificate forwarding. See [docs/hosting.md](docs/hosting.md).
 
 ## Kubernetes
 
@@ -70,6 +120,9 @@ sudo systemctl enable --now vaanarsena-agent
 ## Documentation
 
 - [Architecture](docs/ARCHITECTURE.md): components, data model, protocols
+- [Hosting](docs/hosting.md): single VM with Caddy, Kubernetes, sizing, DNS, backups
+- [Manifests](docs/manifests.md): custom payloads, static and smart groups, blueprints, vsctl, GitOps
+- [Testing](docs/testing.md): automated suites, a local HTTPS stack, piloting real devices
 - [Configuration](docs/configuration.md): every `VS_*` variable
 - [Platforms](docs/platforms.md): Apple, Windows, Android, ChromeOS and Linux setup
 - [Deployment](docs/deployment.md): Docker, Kubernetes, TLS and client certificates
@@ -79,8 +132,9 @@ sudo systemctl enable --now vaanarsena-agent
 ## Building
 
 ```bash
-make test        # unit tests
-make build       # bin/vaanarsena and bin/vaanarsena-agent
+make test        # vet + unit tests
+make e2e         # end-to-end suite against a throwaway PostgreSQL (Docker)
+make build       # bin/vaanarsena, bin/vaanarsena-agent and bin/vsctl
 make image       # container image
 ```
 
@@ -88,10 +142,10 @@ Requires Go 1.26+.
 
 ## Status
 
-v0.1 is an early release. The protocol implementations follow the published
+Early release. The protocol implementations follow the published
 specifications (Apple Device Management, MS-MDE2, MS-MDM, Android Management
-API, Admin SDK) and are covered by unit tests and an end-to-end Linux agent
-flow. Validate each platform against real devices in a pilot before rolling
+API, Admin SDK) and are covered by unit tests and an end-to-end suite that
+runs the HTTPS server with mutual TLS against PostgreSQL in CI. Validate each platform against real devices in a pilot before rolling
 out widely. See the roadmap in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#roadmap-beyond-v01).
 
 ## Contributing

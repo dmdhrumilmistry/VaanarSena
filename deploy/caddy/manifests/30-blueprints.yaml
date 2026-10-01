@@ -1,0 +1,45 @@
+# Blueprints bundle policies, an inline policy and onboarding steps for the
+# groups they target. Onboarding steps run once per device when it first
+# falls in scope: at enrollment, or later when a smart group picks it up.
+# The BYOD guard still applies: a step not allowed on a personal device is
+# skipped and recorded in the audit log.
+
+apiVersion: vaanarsena.io/v1
+kind: Blueprint
+metadata:
+  name: standard-laptop
+  description: Corporate laptop onboarding
+spec:
+  priority: 30
+  groups: [all-corporate]
+  policies: [baseline-security, custom-payloads]
+  policy:
+    wifi:
+      - {ssid: corp-wifi, security: WPA2, password: change-me, autoJoin: true}
+  onEnroll:
+    - {type: refresh}
+    - {type: os_update}
+---
+apiVersion: vaanarsena.io/v1
+kind: Blueprint
+metadata:
+  name: linux-remediation
+  description: Point unencrypted Linux machines at the encryption guide
+spec:
+  priority: 20
+  groups: [at-risk]
+  onEnroll:
+    - type: run_script
+      params:
+        script: |
+          logger -t vaanarsena "Disk encryption is required: see https://intranet.example.com/luks"
+---
+apiVersion: vaanarsena.io/v1
+kind: Blueprint
+metadata:
+  name: ios-update-push
+  description: Nudge outdated iPhones and iPads
+spec:
+  groups: [ios-needs-update]
+  onEnroll:
+    - {type: os_update}

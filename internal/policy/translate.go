@@ -2,6 +2,7 @@ package policy
 
 import (
 	"fmt"
+	"maps"
 	"strconv"
 )
 
@@ -79,11 +80,15 @@ func (d *Document) ApplePayloads(personal bool) []map[string]any {
 			"enforcedSoftwareUpdateDelay": u.DeferDays,
 		})
 	}
+	if d.Custom.AppliesTo(personal) {
+		out = append(out, d.Custom.applePayloads()...)
+	}
 	return out
 }
 
 // SyncMLItem is one OMA-DM node write for Windows.
 type SyncMLItem struct {
+	Op     string // Replace (default), Add, Exec, Delete
 	LocURI string
 	Format string // int, chr, bool, xml, b64
 	Data   string
@@ -132,7 +137,7 @@ func (d *Document) WindowsItems(personal bool) []SyncMLItem {
 	if personal {
 		// Device-scoped hardware and encryption policies are not applied to
 		// personal devices: they would affect the owner's whole machine.
-		return out
+		return append(out, d.customWindows(personal)...)
 	}
 	if e := d.Encryption; e != nil && e.Required {
 		add("BitLocker/RequireDeviceEncryption", "int", "1")
@@ -162,6 +167,21 @@ func (d *Document) WindowsItems(personal bool) []SyncMLItem {
 		if u.DeferDays > 0 {
 			add("Update/DeferQualityUpdatesPeriodInDays", "int", strconv.Itoa(min(u.DeferDays, 30)))
 		}
+	}
+	return append(out, d.customWindows(personal)...)
+}
+
+func (d *Document) customWindows(personal bool) []SyncMLItem {
+	if !d.Custom.AppliesTo(personal) {
+		return nil
+	}
+	var out []SyncMLItem
+	for _, n := range d.Custom.Windows {
+		op := n.Op
+		if op == "" {
+			op = "Replace"
+		}
+		out = append(out, SyncMLItem{Op: op, LocURI: n.LocURI, Format: n.Format, Data: n.Data})
 	}
 	return out
 }
@@ -257,6 +277,9 @@ func (d *Document) AndroidPolicy(personal bool) map[string]any {
 	}
 	if len(apps) > 0 {
 		pol["applications"] = apps
+	}
+	if d.Custom.AppliesTo(personal) {
+		maps.Copy(pol, d.Custom.Android) // raw AMAPI fields override the translation
 	}
 	return pol
 }

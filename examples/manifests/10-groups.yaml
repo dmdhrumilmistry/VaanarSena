@@ -1,0 +1,84 @@
+# Groups decide where configuration lands.
+#
+# Static groups: membership managed by hand, by the API, or listed here.
+# Smart (dynamic) groups: membership computed from rules and refreshed every
+# minute, plus immediately on enrollment and on tag changes.
+
+apiVersion: vaanarsena.io/v1
+kind: Group
+metadata:
+  name: all-corporate
+  description: Every corporate-owned device
+spec:
+  kind: smart
+  rules:
+    match: all
+    conditions:
+      - {field: ownership, op: eq, value: corporate}
+---
+apiVersion: vaanarsena.io/v1
+kind: Group
+metadata:
+  name: byod
+  description: Personally owned devices (work container only)
+spec:
+  kind: smart
+  rules:
+    match: all
+    conditions:
+      - {field: ownership, op: eq, value: personal}
+---
+apiVersion: vaanarsena.io/v1
+kind: Group
+metadata:
+  name: ios-needs-update
+  description: iPhones and iPads below iOS 17
+spec:
+  kind: smart
+  rules:
+    match: all
+    conditions:
+      - {field: platform, op: in, value: [ios, ipados]}
+      - {field: osVersion, op: version_lt, value: "17.0"}
+---
+apiVersion: vaanarsena.io/v1
+kind: Group
+metadata:
+  name: at-risk
+  description: Non-compliant, or a laptop without disk encryption, or silent for a week
+spec:
+  kind: smart
+  rules:
+    match: any
+    conditions:
+      - {field: compliant, op: eq, value: false}
+      - {field: lastSeenDays, op: gt, value: 7}
+    rules:
+      - match: all
+        conditions:
+          - {field: platform, op: eq, value: linux}
+          - {field: facts.linux.diskEncrypted, op: eq, value: false}
+---
+apiVersion: vaanarsena.io/v1
+kind: Group
+metadata:
+  name: sales-emea
+  description: Devices tagged by IT (vsctl tag DEVICE sales emea)
+spec:
+  kind: smart
+  rules:
+    match: all
+    conditions:
+      - {field: tags, op: contains, value: sales}
+      - {field: tags, op: contains, value: emea}
+---
+apiVersion: vaanarsena.io/v1
+kind: Group
+metadata:
+  name: kiosks
+  description: Hand-picked kiosk tablets
+spec:
+  kind: static
+  # Omit "members" to manage membership in the console instead.
+  members:
+    serials: []

@@ -1,0 +1,85 @@
+# Single-host production stack: Caddy (automatic HTTPS) + VaanarSena + PostgreSQL.
+#
+#   cd deploy/caddy
+#   cp .env.example .env        # set VS_DOMAIN, ACME_EMAIL and the secrets
+#   docker compose up -d
+#
+# Point an A/AAAA record for VS_DOMAIN at this host and open ports 80 and 443.
+# Only Caddy publishes ports. VaanarSena publishes none, so nothing outside can
+# reach it except through Caddy, which is what makes trusting the forwarded
+# certificate header safe. PostgreSQL sits on an internal-only network.
+name: vaanarsena
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+      - "${HTTPS_PORT:-443}:443/udp"
+    environment:
+      VS_DOMAIN: ${VS_DOMAIN:?set VS_DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    networks: [edge, internal]
+    depends_on: [vaanarsena]
+
+  vaanarsena:
+    image: ${VS_IMAGE:-ghcr.io/dmdhrumilmistry/vaanarsena:latest}
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      VS_PUBLIC_URL: ${VS_PUBLIC_URL:-https://${VS_DOMAIN}}
+      VS_DATABASE_URL: postgres://vaanarsena:${POSTGRES_PASSWORD}@postgres:5432/vaanarsena?sslmode=disable
+      VS_SECRET_KEY: ${VS_SECRET_KEY:?set VS_SECRET_KEY (openssl rand -hex 32)}
+      VS_ORG_NAME: ${VS_ORG_NAME:-VaanarSena}
+      VS_BOOTSTRAP_ADMIN_EMAIL: ${VS_BOOTSTRAP_ADMIN_EMAIL:-}
+      VS_BOOTSTRAP_ADMIN_PASSWORD: ${VS_BOOTSTRAP_ADMIN_PASSWORD:-}
+      VS_CLIENT_CERT_HEADER: X-Client-Cert
+      VS_TRUST_PROXY: "true"
+      # GitOps: apply every manifest in ./manifests on boot and every 5 minutes.
+      VS_MANIFEST_DIR: /manifests
+      VS_MANIFEST_OWNER: gitops
+      VS_MANIFEST_PRUNE: ${VS_MANIFEST_PRUNE:-false}
+      # Optional platform credentials in ./secrets:
+      # VS_APNS_CERT_FILE: /secrets/apns.crt
+      # VS_APNS_KEY_FILE: /secrets/apns.key
+      # VS_GOOGLE_CREDENTIALS_FILE: /secrets/google.json
+      # VS_ANDROID_ENTERPRISE: enterprises/LC0xxxxxxx
+      # VS_GOOGLE_ADMIN_SUBJECT: admin@example.com
+    volumes:
+      - ./manifests:/manifests:ro
+      # - ./secrets:/secrets:ro
+    # edge gives outbound access to APNs and Google; no ports are published.
+    networks: [edge, internal]
+
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: vaanarsena
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: vaanarsena
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vaanarsena"]
+      interval: 5s
+      retries: 20
+    networks: [internal]
+
+networks:
+  edge: {}
+  internal:
+    internal: true   # no route to or from the outside world
+
+volumes:
+  pgdata:
+  caddy-data:
+  caddy-config:

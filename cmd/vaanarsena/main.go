@@ -24,6 +24,7 @@ import (
 	"github.com/dmdhrumilmistry/VaanarSena/internal/chromeos"
 	"github.com/dmdhrumilmistry/VaanarSena/internal/config"
 	"github.com/dmdhrumilmistry/VaanarSena/internal/httpx"
+	"github.com/dmdhrumilmistry/VaanarSena/internal/manifest"
 	"github.com/dmdhrumilmistry/VaanarSena/internal/mdm"
 	"github.com/dmdhrumilmistry/VaanarSena/internal/pki"
 	"github.com/dmdhrumilmistry/VaanarSena/internal/secrets"
@@ -274,6 +275,18 @@ func serve() error {
 	mux.Handle("/", web.Handler())
 
 	go housekeeping(ctx, st, log)
+	go svc.RunGroupReconciler(ctx, time.Minute)
+	if dir := os.Getenv("VS_MANIFEST_DIR"); dir != "" {
+		every, err := time.ParseDuration(envOr("VS_MANIFEST_INTERVAL", "5m"))
+		if err != nil {
+			return fmt.Errorf("VS_MANIFEST_INTERVAL: %w", err)
+		}
+		loader := &manifest.DirLoader{
+			Applier: &manifest.Applier{Store: st, Svc: svc}, Dir: dir, Log: log,
+			Owner: envOr("VS_MANIFEST_OWNER", "gitops"), Prune: config.EnvBool("VS_MANIFEST_PRUNE", false),
+		}
+		go loader.Run(ctx, every)
+	}
 
 	srv := &http.Server{
 		Addr:              cfg.ListenAddr,
@@ -364,4 +377,11 @@ func withMiddleware(next http.Handler, log *slog.Logger) http.Handler {
 		}()
 		next.ServeHTTP(sw, r)
 	})
+}
+
+func envOr(key, def string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return def
 }

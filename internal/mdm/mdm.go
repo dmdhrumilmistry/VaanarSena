@@ -10,7 +10,6 @@ import (
 	"log/slog"
 
 	"github.com/dmdhrumilmistry/VaanarSena/internal/command"
-	"github.com/dmdhrumilmistry/VaanarSena/internal/policy"
 	"github.com/dmdhrumilmistry/VaanarSena/internal/store"
 )
 
@@ -76,6 +75,19 @@ func (s *Service) EnqueueSystem(ctx context.Context, d *store.Device, typ string
 	return err
 }
 
+// EnqueueSystemParams is EnqueueSystem with parameters (blueprint steps).
+func (s *Service) EnqueueSystemParams(ctx context.Context, d *store.Device, typ string, params json.RawMessage) error {
+	p, err := command.ParseParams(params)
+	if err != nil {
+		return err
+	}
+	if err := command.Authorize(store.RoleAdmin, d, typ, p); err != nil {
+		return err
+	}
+	_, err = s.Store.EnqueueCommand(ctx, d.ID, typ, params, nil)
+	return err
+}
+
 // Wake asks the device's driver to deliver queued work. Errors are logged, not
 // returned: the command stays queued and is delivered at the next check-in.
 func (s *Service) Wake(ctx context.Context, d *store.Device) {
@@ -86,23 +98,6 @@ func (s *Service) Wake(ctx context.Context, d *store.Device) {
 	if err := drv.Wake(ctx, d); err != nil {
 		s.Log.Warn("wake device", "device", d.ID, "platform", d.Platform, "err", err)
 	}
-}
-
-// EffectivePolicy merges every policy that applies to the device.
-func EffectivePolicy(ctx context.Context, st *store.Store, deviceID string) (*policy.Document, error) {
-	pols, err := st.EffectivePolicies(ctx, deviceID)
-	if err != nil {
-		return nil, err
-	}
-	docs := make([]*policy.Document, 0, len(pols))
-	for _, p := range pols {
-		doc, err := policy.Parse(p.Document)
-		if err != nil {
-			return nil, fmt.Errorf("policy %s: %w", p.Name, err)
-		}
-		docs = append(docs, doc)
-	}
-	return policy.Merge(docs...), nil
 }
 
 // PolicyChanged queues apply_policy for every device the policy targets.
@@ -127,12 +122,19 @@ func AttachToGroup(ctx context.Context, st *store.Store, t *store.EnrollmentToke
 	}
 }
 
-// Bootstrap queues the first inventory and policy push after enrollment.
+// Bootstrap runs after enrollment: it places the device in its smart groups,
+// then queues the first inventory, the policy push and blueprint onboarding.
 func (s *Service) Bootstrap(ctx context.Context, d *store.Device) {
+	if _, err := s.ReconcileDevice(ctx, d); err != nil {
+		s.Log.Warn("smart groups at enrollment", "device", d.ID, "err", err)
+	}
 	for _, typ := range []string{command.Refresh, command.ApplyPolicy} {
 		if err := s.EnqueueSystem(ctx, d, typ); err != nil {
 			s.Log.Debug("bootstrap", "device", d.ID, "cmd", typ, "err", err)
 		}
+	}
+	if d.Status == store.StatusEnrolled {
+		s.RunBlueprints(ctx, d)
 	}
 	s.Wake(ctx, d)
 }

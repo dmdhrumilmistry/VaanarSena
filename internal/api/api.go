@@ -63,11 +63,27 @@ func (a *API) Routes(mux *http.ServeMux) {
 	mux.Handle("DELETE /api/v1/enrollment-tokens/{id}", operator(a.revokeToken))
 	mux.Handle("GET /api/v1/enrollment-tokens/{id}/qr.png", operator(a.tokenQR))
 
+	mux.Handle("PUT /api/v1/devices/{id}/tags", operator(a.setTags))
+
 	mux.Handle("GET /api/v1/groups", auditor(a.listGroups))
-	mux.Handle("POST /api/v1/groups", admin(a.createGroup))
+	mux.Handle("POST /api/v1/groups", admin(a.saveGroup))
+	mux.Handle("GET /api/v1/groups/{id}", auditor(a.getGroup))
+	mux.Handle("PUT /api/v1/groups/{id}", admin(a.saveGroup))
 	mux.Handle("DELETE /api/v1/groups/{id}", admin(a.deleteGroup))
 	mux.Handle("POST /api/v1/groups/{id}/devices", operator(a.addGroupDevice))
 	mux.Handle("DELETE /api/v1/groups/{id}/devices/{deviceId}", operator(a.removeGroupDevice))
+	mux.Handle("POST /api/v1/groups/preview", auditor(a.previewRules))
+	mux.Handle("GET /api/v1/groups/schema", auditor(a.ruleSchema))
+
+	mux.Handle("GET /api/v1/blueprints", auditor(a.listBlueprints))
+	mux.Handle("POST /api/v1/blueprints", admin(a.saveBlueprint))
+	mux.Handle("GET /api/v1/blueprints/{id}", auditor(a.getBlueprint))
+	mux.Handle("PUT /api/v1/blueprints/{id}", admin(a.saveBlueprint))
+	mux.Handle("DELETE /api/v1/blueprints/{id}", admin(a.deleteBlueprint))
+
+	// Declarative configuration (GitOps): YAML or JSON manifests.
+	mux.Handle("POST /api/v1/apply", admin(a.apply))
+	mux.Handle("GET /api/v1/export", admin(a.export))
 
 	mux.Handle("GET /api/v1/policies", auditor(a.listPolicies))
 	mux.Handle("POST /api/v1/policies", admin(a.savePolicy))

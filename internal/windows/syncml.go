@@ -312,7 +312,20 @@ func (d *Driver) translate(ctx context.Context, dev *store.Device, c *store.Comm
 			out.get("./DevDetail/SwV") // nothing to set; keep the command answerable
 		}
 		for _, it := range items {
-			out.replace(it)
+			switch it.Op {
+			case "Add":
+				out.addItem(it)
+			case "Exec":
+				if it.Format == "xml" {
+					out.execXML(it.LocURI, it.Data)
+				} else {
+					out.exec(it.LocURI, it.Data)
+				}
+			case "Delete":
+				out.delete(it.LocURI)
+			default:
+				out.replace(it)
+			}
 		}
 		for _, a := range doc.AppsFor("windows") {
 			if a.Install == "required" && a.URL != "" {
@@ -386,8 +399,23 @@ func (r *reply) get(uri string) {
 }
 
 func (r *reply) replace(it policy.SyncMLItem) {
+	if it.Format == "" {
+		it.Format = "chr"
+	}
 	r.b.WriteString(`<Replace><CmdID>` + r.id() + `</CmdID><Item><Target><LocURI>` + esc(it.LocURI) +
 		`</LocURI></Target><Meta><Format xmlns="syncml:metinf">` + it.Format + `</Format></Meta><Data>` + esc(it.Data) + `</Data></Item></Replace>`)
+}
+
+// addItem creates a node with a value (custom payload Add).
+func (r *reply) addItem(it policy.SyncMLItem) {
+	r.b.WriteString(`<Add><CmdID>` + r.id() + `</CmdID><Item><Target><LocURI>` + esc(it.LocURI) + `</LocURI></Target>`)
+	if it.Format != "" {
+		r.b.WriteString(`<Meta><Format xmlns="syncml:metinf">` + esc(it.Format) + `</Format></Meta>`)
+	}
+	if it.Data != "" {
+		r.b.WriteString(`<Data>` + esc(it.Data) + `</Data>`)
+	}
+	r.b.WriteString(`</Item></Add>`)
 }
 
 func (r *reply) add(uri string) {

@@ -11,12 +11,12 @@ import (
 )
 
 const deviceCols = `id, platform, ownership, status, name, serial, model, os_version, assignee, native_id,
-	platform_ids, facts, compliant, cert_serial, enrollment_token_id, enrolled_at, last_seen_at, created_at, updated_at`
+	platform_ids, facts, compliant, tags, cert_serial, enrollment_token_id, enrolled_at, last_seen_at, created_at, updated_at`
 
 func scanDevice(row interface{ Scan(...any) error }) (*Device, error) {
 	var d Device
 	err := row.Scan(&d.ID, &d.Platform, &d.Ownership, &d.Status, &d.Name, &d.Serial, &d.Model, &d.OSVersion,
-		&d.Assignee, &d.NativeID, &d.PlatformIDs, &d.Facts, &d.Compliant, &d.CertSerial, &d.EnrollmentTokenID,
+		&d.Assignee, &d.NativeID, &d.PlatformIDs, &d.Facts, &d.Compliant, &d.Tags, &d.CertSerial, &d.EnrollmentTokenID,
 		&d.EnrolledAt, &d.LastSeenAt, &d.CreatedAt, &d.UpdatedAt)
 	return &d, notFound(err)
 }
@@ -27,6 +27,7 @@ type DeviceFilter struct {
 	Ownership string
 	Status    string
 	GroupID   string
+	Tag       string
 	Search    string
 	Limit     int
 	Offset    int
@@ -51,6 +52,9 @@ func (s *Store) ListDevices(ctx context.Context, f DeviceFilter) ([]*Device, int
 	}
 	if f.GroupID != "" {
 		add("id IN (SELECT device_id FROM group_members WHERE group_id = $%d)", f.GroupID)
+	}
+	if f.Tag != "" {
+		add("$%d = ANY(tags)", f.Tag)
 	}
 	if f.Search != "" {
 		add("(name ILIKE $%[1]d OR serial ILIKE $%[1]d OR assignee ILIKE $%[1]d OR model ILIKE $%[1]d)", "%"+f.Search+"%")
@@ -145,6 +149,7 @@ type DevicePatch struct {
 	PlatformIDs map[string]any // merged into platform_ids
 	Facts       map[string]any // merged into facts
 	Compliant   *bool
+	Tags        *[]string
 	CertSerial  *string
 	Seen        bool
 	Enrolled    bool
@@ -193,6 +198,9 @@ func (s *Store) PatchDevice(ctx context.Context, id string, p DevicePatch) (*Dev
 	}
 	if p.CertSerial != nil {
 		set("cert_serial", *p.CertSerial)
+	}
+	if p.Tags != nil {
+		set("tags", *p.Tags)
 	}
 	if p.PlatformIDs != nil {
 		if err := merge("platform_ids", p.PlatformIDs); err != nil {
@@ -321,17 +329,6 @@ func (s *Store) ListEnrollmentTokens(ctx context.Context) ([]*EnrollmentToken, e
 // RevokeEnrollmentToken disables a token.
 func (s *Store) RevokeEnrollmentToken(ctx context.Context, id string) error {
 	return s.exec1(ctx, `UPDATE enrollment_tokens SET revoked = true WHERE id = $1`, id)
-}
-
-// AddDeviceToGroup adds membership, ignoring duplicates.
-func (s *Store) AddDeviceToGroup(ctx context.Context, groupID, deviceID string) error {
-	_, err := s.DB.Exec(ctx, `INSERT INTO group_members (group_id, device_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`, groupID, deviceID)
-	return err
-}
-
-// RemoveDeviceFromGroup removes membership.
-func (s *Store) RemoveDeviceFromGroup(ctx context.Context, groupID, deviceID string) error {
-	return s.exec1(ctx, `DELETE FROM group_members WHERE group_id = $1 AND device_id = $2`, groupID, deviceID)
 }
 
 // DeviceGroups lists group IDs a device belongs to.

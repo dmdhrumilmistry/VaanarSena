@@ -1,0 +1,60 @@
+# Policies are platform neutral; each platform applies what it supports.
+# Lower priority numbers win when several policies apply to a device.
+
+apiVersion: vaanarsena.io/v1
+kind: Policy
+metadata:
+  name: baseline-security
+  description: Minimum bar for every corporate device
+spec:
+  priority: 50
+  groups: [all-corporate]
+  document:
+    passcode: {required: true, minLength: 8, complex: true, maxInactivityMinutes: 5, maxFailedAttempts: 10}
+    encryption: {required: true}
+    restrictions: {usbStorage: false, developerMode: false}
+    osUpdates: {autoInstall: true, deferDays: 7}
+---
+apiVersion: vaanarsena.io/v1
+kind: Policy
+metadata:
+  name: byod-work-profile
+  description: Work-container passcode only; nothing device-wide
+spec:
+  priority: 50
+  groups: [byod]
+  document:
+    passcode: {required: true, minLength: 6}
+    restrictions: {screenCapture: false}
+---
+# Custom payloads: raw platform settings the neutral model does not cover.
+# They are applied after the neutral translation (so they win on conflict) and
+# reach only corporate devices unless custom.scope is "all".
+apiVersion: vaanarsena.io/v1
+kind: Policy
+metadata:
+  name: custom-payloads
+  description: Raw Apple, Windows and Android settings
+spec:
+  priority: 40
+  groups: [all-corporate]
+  document:
+    custom:
+      apple:
+        # One payload dictionary, exactly as it would appear in a profile.
+        - payload:
+            PayloadType: com.apple.security.firewall
+            EnableFirewall: true
+            EnableStealthMode: true
+        # Or a whole .mobileconfig exported from Apple Configurator / iMazing
+        # (signed or unsigned), base64-encoded:
+        #   base64 -w0 WiFi.mobileconfig
+        # - mobileconfig: PD94bWwgdmVyc2lvbj0iMS4wIi...
+      windows:
+        # Any Policy CSP or other CSP node (OMA-URI). op defaults to Replace.
+        - {locUri: ./Device/Vendor/MSFT/Policy/Config/Experience/AllowCortana, format: int, data: "0"}
+        - {locUri: ./Device/Vendor/MSFT/Policy/Config/Defender/AllowRealtimeMonitoring, format: int, data: "1"}
+      android:
+        # Raw Android Management API Policy fields, merged over the translation.
+        statusBarDisabled: false
+        shareLocationDisabled: true

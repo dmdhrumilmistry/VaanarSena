@@ -21,6 +21,28 @@ jobs:
       - run: go vet ./...
       - run: go test -race ./...
       - name: build
-        run: make build agents
+        run: make build agents cli
       - name: console syntax
         run: node --check internal/web/static/app.js
+
+  e2e:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: vs
+          POSTGRES_PASSWORD: vs
+          POSTGRES_DB: vs_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U vs" --health-interval 5s --health-retries 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: end-to-end suite
+        env:
+          VS_TEST_DATABASE_URL: postgres://vs:vs@localhost:5432/vs_test?sslmode=disable
+        run: go test -count=1 -v ./internal/e2e/

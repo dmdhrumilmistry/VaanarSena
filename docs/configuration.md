@@ -18,6 +18,17 @@ VaanarSena is configured with environment variables.
 | `VS_LOG_LEVEL` | `info` | `debug`, `info`, `warn` or `error`. Logs are JSON on stdout. |
 | `VS_BOOTSTRAP_ADMIN_EMAIL` / `VS_BOOTSTRAP_ADMIN_PASSWORD` | | Create the first admin when no users exist. Ignored afterwards. |
 
+| `VS_CA_CERT_FILE` / `VS_CA_KEY_FILE` | | Use an operator-supplied device CA (PEM) instead of the generated one, e.g. so an ingress can verify device certificates. |
+
+## Declarative configuration (GitOps)
+
+| Variable | Default | Description |
+|---|---|---|
+| `VS_MANIFEST_DIR` | | Directory of manifests (`*.yaml`, `*.yml`, `*.json`, recursive) applied on start and periodically. See [manifests.md](manifests.md). |
+| `VS_MANIFEST_INTERVAL` | `5m` | Re-read interval. Unchanged content is skipped. |
+| `VS_MANIFEST_OWNER` | `gitops` | Owner label recorded on applied resources and used to scope prune. |
+| `VS_MANIFEST_PRUNE` | `false` | Delete resources of this owner that were removed from the directory. |
+
 ## Apple
 
 | Variable | Description |

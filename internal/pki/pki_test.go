@@ -7,6 +7,7 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/base64"
 	"encoding/pem"
 	"math/big"
 	"net/http/httptest"
@@ -107,5 +108,10 @@ func TestClientCertHeader(t *testing.T) {
 	got, err := ca.ClientCert(r, "Ssl-Client-Cert")
 	if err != nil || SerialHex(got) != SerialHex(cert) {
 		t.Errorf("header cert: %v", err)
+	}
+	// Caddy forwards base64 DER instead.
+	r.Header.Set("X-Client-Cert", base64.StdEncoding.EncodeToString(cert.Raw))
+	if got, err := ca.ClientCert(r, "X-Client-Cert"); err != nil || SerialHex(got) != SerialHex(cert) {
+		t.Errorf("base64 DER header: %v", err)
 	}
 }

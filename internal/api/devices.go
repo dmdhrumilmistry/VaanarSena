@@ -23,7 +23,7 @@ func (a *API) listDevices(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	devs, total, err := a.Store.ListDevices(r.Context(), store.DeviceFilter{
 		Platform: q.Get("platform"), Ownership: q.Get("ownership"), Status: q.Get("status"),
-		GroupID: q.Get("group"), Search: q.Get("q"), Limit: queryInt(r, "limit", 100), Offset: queryInt(r, "offset", 0),
+		GroupID: q.Get("group"), Tag: q.Get("tag"), Search: q.Get("q"), Limit: queryInt(r, "limit", 100), Offset: queryInt(r, "offset", 0),
 	})
 	if err != nil {
 		a.fail(w, err)
@@ -320,86 +320,6 @@ func (a *API) revokeToken(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// --- groups ---
-
-func (a *API) listGroups(w http.ResponseWriter, r *http.Request) {
-	gs, err := a.Store.ListGroups(r.Context())
-	if err != nil {
-		a.fail(w, err)
-		return
-	}
-	httpx.JSON(w, http.StatusOK, map[string]any{"groups": nonNil(gs)})
-}
-
-func (a *API) createGroup(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		Name        string `json:"name"`
-		Description string `json:"description"`
-	}
-	if err := decode(r, &req); err != nil || strings.TrimSpace(req.Name) == "" {
-		httpx.Error(w, http.StatusBadRequest, "name is required")
-		return
-	}
-	g, err := a.Store.CreateGroup(r.Context(), strings.TrimSpace(req.Name), req.Description)
-	if err != nil {
-		if strings.Contains(err.Error(), "duplicate") {
-			httpx.Error(w, http.StatusConflict, "a group with that name exists")
-			return
-		}
-		a.fail(w, err)
-		return
-	}
-	if !a.audit(w, r, "group.create", g.ID, map[string]any{"name": g.Name}) {
-		return
-	}
-	httpx.JSON(w, http.StatusCreated, g)
-}
-
-func (a *API) deleteGroup(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	if !a.audit(w, r, "group.delete", id, nil) {
-		return
-	}
-	if err := a.Store.DeleteGroup(r.Context(), id); err != nil {
-		a.fail(w, err)
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
-}
-
-func (a *API) addGroupDevice(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		DeviceID string `json:"deviceId"`
-	}
-	if err := decode(r, &req); err != nil || req.DeviceID == "" {
-		httpx.Error(w, http.StatusBadRequest, "deviceId is required")
-		return
-	}
-	gid := r.PathValue("id")
-	if !a.audit(w, r, "group.add_device", gid, map[string]any{"deviceId": req.DeviceID}) {
-		return
-	}
-	if err := a.Store.AddDeviceToGroup(r.Context(), gid, req.DeviceID); err != nil {
-		a.fail(w, err)
-		return
-	}
-	a.Svc.PolicyChanged(r.Context(), []string{req.DeviceID})
-	w.WriteHeader(http.StatusNoContent)
-}
-
-func (a *API) removeGroupDevice(w http.ResponseWriter, r *http.Request) {
-	gid, did := r.PathValue("id"), r.PathValue("deviceId")
-	if !a.audit(w, r, "group.remove_device", gid, map[string]any{"deviceId": did}) {
-		return
-	}
-	if err := a.Store.RemoveDeviceFromGroup(r.Context(), gid, did); err != nil {
-		a.fail(w, err)
-		return
-	}
-	a.Svc.PolicyChanged(r.Context(), []string{did})
-	w.WriteHeader(http.StatusNoContent)
-}
-
 // --- policies ---
 
 func (a *API) listPolicies(w http.ResponseWriter, r *http.Request) {
@@ -426,6 +346,9 @@ func (a *API) getPolicy(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, http.StatusOK, p)
 }
 
+// maskedSecret replaces secrets in responses to non-admins and listings.
+const maskedSecret = "********"
+
 // redactPolicy hides Wi-Fi passphrases from non-admin readers and listings.
 func redactPolicy(p *store.Policy) {
 	doc, err := policy.Parse(p.Document)
@@ -434,7 +357,7 @@ func redactPolicy(p *store.Policy) {
 	}
 	for i := range doc.WiFi {
 		if doc.WiFi[i].Password != "" {
-			doc.WiFi[i].Password = "********"
+			doc.WiFi[i].Password = maskedSecret
 		}
 	}
 	p.Document, _ = json.Marshal(doc)
@@ -509,7 +432,7 @@ func restoreMaskedPasswords(doc *policy.Document, stored json.RawMessage) {
 		prev[w.SSID] = w.Password
 	}
 	for i := range doc.WiFi {
-		if doc.WiFi[i].Password == "********" {
+		if doc.WiFi[i].Password == maskedSecret {
 			doc.WiFi[i].Password = prev[doc.WiFi[i].SSID]
 		}
 	}

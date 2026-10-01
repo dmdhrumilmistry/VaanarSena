@@ -105,6 +105,7 @@ type Device struct {
 	PlatformIDs       json.RawMessage `json:"platformIds"`
 	Facts             json.RawMessage `json:"facts"`
 	Compliant         *bool           `json:"compliant,omitempty"`
+	Tags              []string        `json:"tags"`
 	CertSerial        string          `json:"-"`
 	EnrollmentTokenID *string         `json:"enrollmentTokenId,omitempty"`
 	EnrolledAt        *time.Time      `json:"enrolledAt,omitempty"`
@@ -121,13 +122,38 @@ func (d *Device) IsApple() bool {
 	return d.Platform == PlatformIOS || d.Platform == PlatformIPadOS || d.Platform == PlatformMacOS
 }
 
-// Group is a set of devices.
+// Group kinds.
+const (
+	GroupStatic = "static"
+	GroupSmart  = "smart"
+)
+
+// Group is a set of devices: static (managed by hand) or smart (membership
+// computed from Rules).
 type Group struct {
-	ID          string    `json:"id"`
-	Name        string    `json:"name"`
-	Description string    `json:"description"`
-	CreatedAt   time.Time `json:"createdAt"`
-	DeviceCount int       `json:"deviceCount"`
+	ID          string          `json:"id"`
+	Name        string          `json:"name"`
+	Description string          `json:"description"`
+	Kind        string          `json:"kind"`
+	Rules       json.RawMessage `json:"rules,omitempty"`
+	ManagedBy   string          `json:"managedBy,omitempty"`
+	CreatedAt   time.Time       `json:"createdAt"`
+	UpdatedAt   time.Time       `json:"updatedAt"`
+	DeviceCount int             `json:"deviceCount"`
+}
+
+// Blueprint bundles configuration and onboarding for the groups it targets.
+type Blueprint struct {
+	ID          string          `json:"id"`
+	Name        string          `json:"name"`
+	Description string          `json:"description"`
+	Priority    int             `json:"priority"`
+	Spec        json.RawMessage `json:"spec"`
+	Version     int             `json:"version"`
+	ManagedBy   string          `json:"managedBy,omitempty"`
+	CreatedAt   time.Time       `json:"createdAt"`
+	UpdatedAt   time.Time       `json:"updatedAt"`
+	GroupIDs    []string        `json:"groupIds"`
 }
 
 // Policy is a platform-neutral policy document.
@@ -138,6 +164,7 @@ type Policy struct {
 	Priority    int             `json:"priority"`
 	Document    json.RawMessage `json:"document"`
 	Version     int             `json:"version"`
+	ManagedBy   string          `json:"managedBy,omitempty"`
 	CreatedAt   time.Time       `json:"createdAt"`
 	UpdatedAt   time.Time       `json:"updatedAt"`
 	GroupIDs    []string        `json:"groupIds"`

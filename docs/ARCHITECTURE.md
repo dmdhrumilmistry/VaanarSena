@@ -72,6 +72,10 @@ need Google to store your policy history or audit trail.
 | `internal/android` | Android Management API client: enterprises, policies, enrollment tokens, device commands. |
 | `internal/chromeos` | Admin SDK client: device sync and commands. |
 | `internal/agent` | Server side of the Linux agent protocol. |
+| `internal/groups` | Smart group rule engine: conditions over device fields, tags and inventory facts. |
+| `internal/blueprint` | Blueprint spec: referenced policies, inline policy, onboarding steps. |
+| `internal/manifest` | Declarative resources (Group, Policy, Blueprint): decode, validate, apply, prune, export, and the GitOps directory loader. |
+| `cmd/vsctl` | CLI for apply/diff/export and device helpers. |
 | `internal/api` | Admin REST API. |
 | `internal/web` | Embedded single-page web console. |
 
@@ -87,7 +91,21 @@ need Google to store your policy history or audit trail.
   UDID/push token/magic, Windows DeviceID, AMAPI device name, ChromeOS
   deviceId, agent certificate serial).
 - `policies` and `policy_assignments`: neutral policy documents assigned to
-  device groups or individual devices; `groups` and `group_members`.
+  device groups or individual devices.
+- `groups` (`kind` static or smart, `rules` for smart) and `group_members`
+  (`source` manual or smart). A reconciler re-evaluates smart groups every
+  minute, at enrollment and on tag changes, and pushes policy to devices whose
+  membership changed.
+- `blueprints`, `blueprint_assignments` (to groups) and `blueprint_runs`
+  (onboarding ran once per device; the primary key makes the claim atomic
+  across replicas).
+- `managed_by` on groups, policies and blueprints records which manifest
+  source owns them, scoping prune.
+- `devices.tags`: free-form labels usable in smart group rules.
+
+**Effective configuration** for a device = merge of policies assigned to it
+or its groups, policies referenced by blueprints targeting its groups, and
+those blueprints' inline policies, ordered by priority (lower number wins).
 - `commands`: queue of platform-neutral commands with status
   (`queued` -> `sent` -> `acknowledged` / `error` / `not_now`), the native
   payload that was actually sent, and the device's response.
@@ -124,9 +142,14 @@ need Google to store your policy history or audit trail.
   "restrictions": {"camera": false, "screenCapture": false, "usbStorage": false, "bluetooth": true},
   "wifi":  [{"ssid": "corp", "security": "WPA2", "password": "..."}],
   "osUpdates": {"autoInstall": true, "deferDays": 7},
-  "apps": [{"id": "com.example.app", "platform": "android", "install": "required"}]
+  "apps": [{"id": "com.example.app", "platform": "android", "install": "required"}],
+  "custom": {"scope": "corporate", "apple": [...], "windows": [...], "android": {...}}
 }
 ```
+
+`custom` carries raw platform payloads (see [manifests.md](manifests.md#custom-payloads)),
+applied after the neutral translation and only to corporate devices unless
+`scope` is `all`.
 
 Translators:
 

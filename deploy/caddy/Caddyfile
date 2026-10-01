@@ -1,0 +1,30 @@
+# Production-ready single host: Caddy terminates TLS with a Let's Encrypt
+# certificate for {$VS_DOMAIN} and forwards to VaanarSena.
+{
+	email {$ACME_EMAIL}
+}
+
+{$VS_DOMAIN} {
+	tls {
+		# Ask every client for a certificate but do not require or verify
+		# one here. Windows and Linux devices present their VaanarSena
+		# identity; browsers and Apple devices present none. The TLS
+		# handshake still proves the client holds the certificate's key, and
+		# VaanarSena verifies the chain against its own CA.
+		client_auth {
+			mode request
+		}
+	}
+
+	reverse_proxy vaanarsena:8080 {
+		# Overwrite (never append to) the headers VaanarSena trusts, so a
+		# client cannot inject its own values.
+		header_up X-Client-Cert {http.request.tls.client.certificate_der_base64}
+		header_up X-Forwarded-For {remote_host}
+	}
+
+	encode gzip
+	request_body {
+		max_size 16MB
+	}
+}

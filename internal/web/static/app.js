@@ -26,7 +26,15 @@ async function api(method, path, body) {
     body: body === undefined ? undefined : JSON.stringify(body),
     credentials: "same-origin",
   });
-  if (res.status === 401 && path !== "/auth/login") { state.me = null; render(); throw new Error("signed out"); }
+  if (res.status === 401 && path !== "/auth/login") {
+    // Only an expired session re-renders (to show the login page). On the
+    // login page itself state.me is already null, and re-rendering here would
+    // loop: render -> /auth/me -> 401 -> render.
+    const hadSession = state.me !== null;
+    state.me = null;
+    if (hadSession) render();
+    throw new Error("signed out");
+  }
   if (res.status === 204) return null;
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || res.statusText);
@@ -50,7 +58,7 @@ const errorBox = (e) => h("div", { class: "error" }, e.message || String(e));
 // --- routing ---
 
 const routes = {
-  "": dashboard, devices, device, enroll, policies, policy: policyEdit, groups, users, audit, account,
+  "": dashboard, devices, device, enroll, policies, policy: policyEdit, groups, blueprints, apply: applyView, users, audit, account,
 };
 
 function nav() {
@@ -60,7 +68,8 @@ function nav() {
   return h("nav", {},
     h("div", { class: "logo" }, "Vaanar", h("span", {}, "Sena")),
     link("", "Dashboard"), link("devices", "Devices"), link("enroll", "Enroll", "operator"),
-    link("policies", "Policies"), link("groups", "Groups"), link("users", "Users", "admin"),
+    link("policies", "Policies"), link("groups", "Groups"), link("blueprints", "Blueprints"), link("apply", "Apply manifest", "admin"),
+    link("users", "Users", "admin"),
     link("audit", "Audit log"), link("account", "Account"),
     h("div", { class: "spacer" }),
     h("div", { class: "who" }, state.me.email, h("br"), state.me.role),
@@ -80,7 +89,8 @@ async function render() {
   const view = routes[name] || dashboard;
   const main = h("main", {}, h("p", { class: "muted" }, "Loading..."));
   root.replaceChildren(h("div", { class: "layout" }, nav(), main));
-  try { main.replaceChildren(...[].concat(await view(...args))); } catch (e) { main.replaceChildren(errorBox(e)); }
+  // Views return null for optional sections; replaceChildren would print them.
+  try { main.replaceChildren(...[].concat(await view(...args)).filter((n) => n !== null && n !== undefined && n !== false)); } catch (e) { main.replaceChildren(errorBox(e)); }
 }
 window.addEventListener("hashchange", render);
 
@@ -181,10 +191,31 @@ async function device(id) {
         ["Compliance", compliantBadge(d.compliant)], ["Enrolled", fmtTime(d.enrolledAt)], ["Last seen", fmtTime(d.lastSeenAt)], ["Native ID", h("span", { class: "mono" }, d.nativeId)], ["Device ID", h("span", { class: "mono" }, d.id)]]),
       h("div", {}, can("operator") && allowed.length ? h("div", { class: "panel" }, h("h2", {}, "Send command"), h("div", { class: "toolbar" }, typeSel, params, send), out) : null,
         h("h2", {}, "Effective policy"), h("pre", {}, JSON.stringify(res.effectivePolicy, null, 2)))),
+    can("operator") ? await deviceGroupsPanel(d, res.groups) : null,
     h("h2", {}, "Commands"),
     table(["Command", "Status", "Queued", "Completed", "Error"], cmds.commands.map((c) => [c.type, c.status, fmtTime(c.createdAt), fmtTime(c.completedAt), c.error || ""])),
     h("h2", {}, "Inventory"), h("pre", {}, JSON.stringify(d.facts, null, 2)),
   ];
+}
+
+// Tags (which feed smart groups) and static group membership for a device.
+async function deviceGroupsPanel(d, memberOf) {
+  const all = (await api("GET", "/groups")).groups;
+  const tags = h("input", { value: (d.tags || []).join(", "), placeholder: "e.g. sales, emea, kiosk" });
+  const statics = all.filter((g) => g.kind === "static" && !memberOf.includes(g.id));
+  const pick = h("select", {}, statics.map((g) => h("option", { value: g.id }, g.name)));
+  const out = h("div");
+  const names = memberOf.map((id) => all.find((g) => g.id === id)).filter(Boolean);
+  return h("div", { class: "panel" },
+    h("h2", {}, "Groups and tags"),
+    h("p", {}, names.length ? names.map((g) => h("span", { class: "badge" + (g.kind === "smart" ? " ok" : "") }, g.name, " ")) : h("span", { class: "muted" }, "Not in any group.")),
+    h("div", { class: "toolbar" }, h("label", {}, "Tags"), tags, h("button", { class: "secondary", onclick: async () => {
+      try { await api("PUT", `/devices/${d.id}/tags`, { tags: tags.value.split(",").map((t) => t.trim()).filter(Boolean) }); render(); } catch (e) { out.replaceChildren(errorBox(e)); }
+    } }, "Save tags")),
+    statics.length ? h("div", { class: "toolbar" }, h("label", {}, "Static group"), pick, h("button", { class: "secondary", onclick: async () => {
+      try { await api("POST", `/groups/${pick.value}/devices`, { deviceId: d.id }); render(); } catch (e) { out.replaceChildren(errorBox(e)); }
+    } }, "Add")) : null,
+    out);
 }
 
 // --- enrollment ---
@@ -274,17 +305,164 @@ async function policyEdit(id) {
 
 // --- groups ---
 
-async function groups() {
+const ruleExample = { match: "all", conditions: [
+  { field: "platform", op: "in", value: ["ios", "ipados"] },
+  { field: "osVersion", op: "version_lt", value: "17.0" },
+] };
+
+const managedBadge = (m) => m && m !== "-" ? h("span", { class: "badge" }, "managed by " + m) : null;
+
+async function groups(id) {
+  if (id) return groupEdit(id);
   const res = await api("GET", "/groups");
-  const name = h("input", { placeholder: "Group name" });
-  const out = h("div");
   return [
     h("h1", {}, "Groups"),
-    can("admin") ? h("div", { class: "toolbar" }, name, h("button", { onclick: async () => {
-      try { await api("POST", "/groups", { name: name.value }); render(); } catch (e) { out.replaceChildren(errorBox(e)); }
-    } }, "Create"), out) : null,
-    table(["Name", "Devices", "Created", ""], res.groups.map((g) => [g.name, g.deviceCount, fmtTime(g.createdAt),
-      h("a", { href: "#/devices?group=" + g.id }, "view devices")])),
+    h("p", { class: "muted" }, "Static groups are managed by hand (or by manifests). Smart groups compute membership from rules over device fields, tags and inventory facts, and update automatically every minute."),
+    can("admin") ? h("div", { class: "toolbar" }, h("button", { onclick: () => { location.hash = "#/groups/new"; } }, "New group")) : null,
+    table(["Name", "Kind", "Devices", "Source", "Updated"], res.groups.map((g) => [g.name,
+      h("span", { class: "badge" + (g.kind === "smart" ? " ok" : "") }, g.kind), g.deviceCount, managedBadge(g.managedBy) || "console", fmtTime(g.updatedAt)]),
+      (i) => { location.hash = "#/groups/" + res.groups[i].id; }),
+  ];
+}
+
+async function groupEdit(id) {
+  const isNew = id === "new";
+  const [res, schema] = await Promise.all([isNew ? Promise.resolve({ group: { name: "", description: "", kind: "smart", rules: ruleExample }, members: [] }) : api("GET", "/groups/" + id), api("GET", "/groups/schema")]);
+  const g = res.group;
+  const name = h("input", { value: g.name });
+  const desc = h("input", { value: g.description });
+  const kind = h("select", {}, ["static", "smart"].map((k) => h("option", { value: k, selected: g.kind === k }, k)));
+  const rules = h("textarea", {}, JSON.stringify(g.rules || ruleExample, null, 2));
+  const out = h("div");
+  const preview = h("div");
+  const rulesBox = h("div", {},
+    h("h2", {}, "Rules"),
+    h("p", { class: "muted" }, "Fields: " + schema.fields.join(", ") + ", or facts.<path> (e.g. facts.linux.diskEncrypted). Ops: " + schema.ops.join(", ") + ". Nest {match, conditions, rules} for AND/OR."),
+    rules,
+    h("div", { class: "toolbar" }, h("button", { class: "secondary", onclick: async () => {
+      try {
+        const r = await api("POST", "/groups/preview", JSON.parse(rules.value));
+        preview.replaceChildren(h("p", {}, r.total + " device(s) match"), table(["Name", "Platform", "OS", "Ownership"], r.devices.map((d) => [d.name || d.nativeId, d.platform, d.osVersion, ownershipBadge(d.ownership)])));
+      } catch (e) { preview.replaceChildren(errorBox(e)); }
+    } }, "Preview matches")), preview);
+  const sync = () => { rulesBox.hidden = kind.value !== "smart"; };
+  kind.addEventListener("change", sync); sync();
+  const save = h("button", { disabled: !can("admin"), onclick: async () => {
+    try {
+      const body = { name: name.value, description: desc.value, kind: kind.value };
+      if (kind.value === "smart") body.rules = JSON.parse(rules.value);
+      const saved = await api(isNew ? "POST" : "PUT", isNew ? "/groups" : "/groups/" + id, body);
+      location.hash = "#/groups/" + saved.id;
+    } catch (e) { out.replaceChildren(errorBox(e)); }
+  } }, "Save");
+  const del = !isNew && can("admin") ? h("button", { class: "danger", onclick: async () => { if (confirm("Delete this group? Policies and blueprints targeting it stop applying to its devices.")) { await api("DELETE", "/groups/" + id); location.hash = "#/groups"; } } }, "Delete") : null;
+  return [
+    h("h1", {}, isNew ? "New group" : g.name, " ", managedBadge(g.managedBy)),
+    g.managedBy && g.managedBy !== "-" ? h("div", { class: "notice" }, "This group is managed by manifests (" + g.managedBy + "). Edits here are overwritten by the next apply from that source.") : null,
+    h("div", { class: "panel form" }, h("label", {}, "Name"), name, h("label", {}, "Description"), desc, h("label", {}, "Kind"), kind),
+    rulesBox, out, h("div", { class: "toolbar" }, save, del),
+    isNew ? null : h("div", {}, h("h2", {}, "Members (" + res.members.length + ")"),
+      g.kind === "static" ? h("p", { class: "muted" }, "Add devices from a device's page, via manifests, or via the API.") : null,
+      h("p", {}, h("a", { href: "#/devices?group=" + g.id }, "View member devices"))),
+  ];
+}
+
+// --- blueprints ---
+
+const blueprintTemplate = {
+  policies: [],
+  policy: { passcode: { required: true, minLength: 6 } },
+  onEnroll: [{ type: "refresh" }],
+};
+
+async function blueprints(id) {
+  if (id) return blueprintEdit(id);
+  const res = await api("GET", "/blueprints");
+  return [
+    h("h1", {}, "Blueprints"),
+    h("p", { class: "muted" }, "A blueprint bundles policies, an inline policy (including custom payloads) and onboarding steps, and targets groups. Onboarding steps run once per device when it first falls in scope: at enrollment, or when it later joins a targeted group."),
+    can("admin") ? h("div", { class: "toolbar" }, h("button", { onclick: () => { location.hash = "#/blueprints/new"; } }, "New blueprint")) : null,
+    table(["Name", "Priority", "Version", "Groups", "Source", "Updated"], res.blueprints.map((b) => [b.name, b.priority, b.version, b.groupIds.length, managedBadge(b.managedBy) || "console", fmtTime(b.updatedAt)]),
+      (i) => { location.hash = "#/blueprints/" + res.blueprints[i].id; }),
+  ];
+}
+
+async function blueprintEdit(id) {
+  const isNew = id === "new";
+  const [b, gs] = await Promise.all([isNew ? Promise.resolve({ name: "", description: "", priority: 100, spec: blueprintTemplate, groupIds: [] }) : api("GET", "/blueprints/" + id), api("GET", "/groups")]);
+  const name = h("input", { value: b.name });
+  const desc = h("input", { value: b.description });
+  const prio = h("input", { type: "number", value: String(b.priority) });
+  const spec = h("textarea", {}, JSON.stringify(b.spec, null, 2));
+  const boxes = gs.groups.map((g) => h("label", {}, h("input", { type: "checkbox", value: g.id, checked: b.groupIds.includes(g.id) }), " " + g.name + " (" + g.kind + ")"));
+  const out = h("div");
+  const save = h("button", { disabled: !can("admin"), onclick: async () => {
+    try {
+      const saved = await api(isNew ? "POST" : "PUT", isNew ? "/blueprints" : "/blueprints/" + id, { name: name.value, description: desc.value, priority: +prio.value,
+        groupIds: boxes.map((l) => l.firstChild).filter((c) => c.checked).map((c) => c.value), spec: JSON.parse(spec.value) });
+      location.hash = "#/blueprints/" + saved.id;
+    } catch (e) { out.replaceChildren(errorBox(e)); }
+  } }, "Save and push");
+  const del = !isNew && can("admin") ? h("button", { class: "danger", onclick: async () => { if (confirm("Delete this blueprint?")) { await api("DELETE", "/blueprints/" + id); location.hash = "#/blueprints"; } } }, "Delete") : null;
+  return [
+    h("h1", {}, isNew ? "New blueprint" : b.name, " ", managedBadge(b.managedBy)),
+    h("div", { class: "panel form" }, h("label", {}, "Name"), name, h("label", {}, "Description"), desc, h("label", {}, "Priority"), prio,
+      h("label", {}, "Target groups"), h("div", {}, boxes.length ? boxes : h("span", { class: "muted" }, "Create a group first."))),
+    h("h2", {}, "Spec"),
+    h("p", { class: "muted" }, "policies: names of existing policies; policy: an inline policy document (supports custom payloads); onEnroll: [{type, params}] commands. Wipe and retire are not allowed as onboarding steps, and the BYOD guard still applies."),
+    spec, out, h("div", { class: "toolbar" }, save, del),
+  ];
+}
+
+// --- declarative apply ---
+
+const manifestExample = `apiVersion: vaanarsena.io/v1
+kind: Group
+metadata:
+  name: ios-needs-update
+spec:
+  kind: smart
+  rules:
+    match: all
+    conditions:
+      - {field: platform, op: in, value: [ios, ipados]}
+      - {field: osVersion, op: version_lt, value: "17.0"}
+---
+apiVersion: vaanarsena.io/v1
+kind: Blueprint
+metadata:
+  name: ios-update-push
+spec:
+  groups: [ios-needs-update]
+  onEnroll:
+    - {type: os_update}
+`;
+
+async function applyView() {
+  const text = h("textarea", {}, manifestExample);
+  const owner = h("input", { value: "console-apply", placeholder: "owner label" });
+  const prune = h("input", { type: "checkbox" });
+  const out = h("div");
+  const run = (dry) => async () => {
+    try {
+      const q = new URLSearchParams({ owner: owner.value, dryRun: String(dry), prune: String(prune.checked) });
+      const res = await fetch("/api/v1/apply?" + q, { method: "POST", credentials: "same-origin",
+        headers: { "Content-Type": "application/yaml", "X-Requested-With": "vaanarsena" }, body: text.value });
+      const data = await res.json();
+      if (!res.ok) { out.replaceChildren(errorBox(new Error(data.error)), h("ul", {}, (data.problems || []).map((p) => h("li", {}, p)))); return; }
+      out.replaceChildren(h("div", { class: "notice" }, data.dryRun ? "Dry run: nothing was changed." : "Applied."),
+        table(["Action", "Kind", "Name"], data.changes.map((c) => [c.action, c.kind, c.name])));
+    } catch (e) { out.replaceChildren(errorBox(e)); }
+  };
+  return [
+    h("h1", {}, "Apply manifest"),
+    h("p", { class: "muted" }, "Paste YAML or JSON resources (Group, Policy, Blueprint). The whole set is validated before anything is written. The same endpoint backs vsctl and GitOps; see docs/manifests.md."),
+    text,
+    h("div", { class: "toolbar" }, h("label", {}, "Owner "), owner, h("label", {}, prune, " prune resources of this owner that are not in the manifest"),
+      h("button", { class: "secondary", onclick: run(true) }, "Dry run"), h("button", { onclick: run(false) }, "Apply")),
+    out,
+    h("h2", {}, "Export"),
+    h("p", {}, h("a", { href: "/api/v1/export", download: "vaanarsena-export.yaml" }, "Download the current configuration as YAML"), h("span", { class: "muted" }, " (includes secrets such as Wi-Fi passphrases)")),
   ];
 }
 

@@ -14,6 +14,7 @@ import (
 	"crypto/sha256"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
@@ -273,11 +274,17 @@ func (ca *CA) ClientCert(r *http.Request, header string) (*x509.Certificate, err
 		if err != nil {
 			return nil, err
 		}
-		block, _ := pem.Decode([]byte(raw))
-		if block == nil {
-			return nil, errors.New("client certificate header is not PEM")
+		// URL-encoded PEM (nginx $ssl_client_escaped_cert) or base64 DER
+		// (Caddy {http.request.tls.client.certificate_der_base64}).
+		der := []byte(nil)
+		if block, _ := pem.Decode([]byte(raw)); block != nil {
+			der = block.Bytes
+		} else if b, err := base64.StdEncoding.DecodeString(strings.TrimSpace(r.Header.Get(header))); err == nil {
+			der = b
+		} else {
+			return nil, errors.New("client certificate header is neither PEM nor base64 DER")
 		}
-		cert, err = x509.ParseCertificate(block.Bytes)
+		cert, err = x509.ParseCertificate(der)
 		if err != nil {
 			return nil, err
 		}
