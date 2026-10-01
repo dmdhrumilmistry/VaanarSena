@@ -1,0 +1,20 @@
+[Unit]
+Description=VaanarSena device management agent
+Documentation=https://github.com/dmdhrumilmistry/VaanarSena
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/vaanarsena-agent run
+Restart=always
+RestartSec=30
+# The agent runs as root because it installs packages and manages the
+# machine; these settings restrict what it touches beyond that.
+ProtectHome=read-only
+PrivateTmp=true
+StateDirectory=vaanarsena-agent
+StateDirectoryMode=0700
+
+[Install]
+WantedBy=multi-user.target

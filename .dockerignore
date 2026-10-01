@@ -1,0 +1,7 @@
+.git
+.github
+bin
+dist
+deploy/data
+*.md
+!README.md

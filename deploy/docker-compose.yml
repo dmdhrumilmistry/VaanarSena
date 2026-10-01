@@ -1,0 +1,52 @@
+# Evaluation stack: VaanarSena + PostgreSQL.
+#
+#   cp deploy/.env.example deploy/.env   # then edit the secrets
+#   docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d
+#
+# This serves plain HTTP on :8080. Real devices require HTTPS on a public
+# name: put a TLS reverse proxy in front, or set VS_TLS_CERT_FILE/KEY_FILE.
+name: vaanarsena
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: vaanarsena
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: vaanarsena
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vaanarsena"]
+      interval: 5s
+      retries: 20
+
+  vaanarsena:
+    image: ${VS_IMAGE:-ghcr.io/dmdhrumilmistry/vaanarsena:latest}
+    build:
+      context: ..
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    environment:
+      VS_DATABASE_URL: postgres://vaanarsena:${POSTGRES_PASSWORD}@postgres:5432/vaanarsena?sslmode=disable
+      VS_SECRET_KEY: ${VS_SECRET_KEY:?set VS_SECRET_KEY (openssl rand -hex 32)}
+      VS_PUBLIC_URL: ${VS_PUBLIC_URL:-http://localhost:8080}
+      VS_ORG_NAME: ${VS_ORG_NAME:-VaanarSena}
+      VS_BOOTSTRAP_ADMIN_EMAIL: ${VS_BOOTSTRAP_ADMIN_EMAIL:-}
+      VS_BOOTSTRAP_ADMIN_PASSWORD: ${VS_BOOTSTRAP_ADMIN_PASSWORD:-}
+      # Optional platform credentials, mounted from ./secrets:
+      # VS_APNS_CERT_FILE: /secrets/apns.crt
+      # VS_APNS_KEY_FILE: /secrets/apns.key
+      # VS_GOOGLE_CREDENTIALS_FILE: /secrets/google.json
+      # VS_ANDROID_ENTERPRISE: enterprises/LC0xxxxxxx
+      # VS_GOOGLE_ADMIN_SUBJECT: admin@example.com
+    # volumes:
+    #   - ./secrets:/secrets:ro
+
+volumes:
+  pgdata:

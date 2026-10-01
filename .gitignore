@@ -1,0 +1,13 @@
+/bin/
+/dist/
+*.exe
+*.test
+*.out
+deploy/.env
+deploy/secrets/
+*.pem
+*.key
+!internal/**/testdata/*.pem
+.idea/
+.vscode/
+.DS_Store
