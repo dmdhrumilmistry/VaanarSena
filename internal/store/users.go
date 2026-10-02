@@ -167,6 +167,12 @@ func (s *Store) PutSetting(ctx context.Context, key string, value []byte, encryp
 	return err
 }
 
+// DeleteSetting removes a setting; a missing key is not an error.
+func (s *Store) DeleteSetting(ctx context.Context, key string) error {
+	_, err := s.DB.Exec(ctx, `DELETE FROM settings WHERE key = $1`, key)
+	return err
+}
+
 // InsertSettingIfAbsent stores a setting only if the key is new and reports
 // whether it was inserted. Used for first-boot generation races.
 func (s *Store) InsertSettingIfAbsent(ctx context.Context, key string, value []byte, encrypted bool) (bool, error) {

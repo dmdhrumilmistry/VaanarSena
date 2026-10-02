@@ -12,6 +12,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"os"
 	"sync"
 	"time"
 
@@ -31,9 +32,21 @@ type Driver struct {
 	mu       sync.Mutex
 }
 
+// DefaultBase is the Admin SDK Directory API endpoint.
+const DefaultBase = "https://admin.googleapis.com/admin/directory/v1/"
+
 // New authenticates to the Admin SDK by impersonating adminSubject.
 func New(ctx context.Context, st *store.Store, credsFile, adminSubject, customer string, log *slog.Logger) (*Driver, error) {
-	api, err := google.NewDelegated(ctx, credsFile, adminSubject, "https://admin.googleapis.com/admin/directory/v1/customer/"+url.PathEscape(customer), scope)
+	data, err := os.ReadFile(credsFile)
+	if err != nil {
+		return nil, err
+	}
+	return NewFromJSON(ctx, st, data, adminSubject, customer, DefaultBase, log)
+}
+
+// NewFromJSON is New with an in-memory key and an overridable base URL.
+func NewFromJSON(ctx context.Context, st *store.Store, creds []byte, adminSubject, customer, base string, log *slog.Logger) (*Driver, error) {
+	api, err := google.DelegatedFromJSON(ctx, creds, adminSubject, base+"customer/"+url.PathEscape(customer), scope)
 	if err != nil {
 		return nil, err
 	}

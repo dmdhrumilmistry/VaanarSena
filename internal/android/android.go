@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -33,13 +34,70 @@ type Driver struct {
 	mu         sync.Mutex // serialises queue processing per process
 }
 
-// New authenticates to AMAPI.
+// DefaultBase is the Android Management API endpoint.
+const DefaultBase = "https://androidmanagement.googleapis.com/v1/"
+
+// New authenticates to AMAPI with a key file.
 func New(ctx context.Context, st *store.Store, svc *mdm.Service, credsFile, enterprise string, log *slog.Logger) (*Driver, error) {
-	api, err := google.NewServiceAccount(ctx, credsFile, "https://androidmanagement.googleapis.com/v1/", scope)
+	data, err := os.ReadFile(credsFile)
+	if err != nil {
+		return nil, err
+	}
+	return NewFromJSON(ctx, st, svc, data, enterprise, DefaultBase, log)
+}
+
+// NewFromJSON authenticates to AMAPI with an in-memory key. base is normally
+// DefaultBase; tests point it at a fake.
+func NewFromJSON(ctx context.Context, st *store.Store, svc *mdm.Service, creds []byte, enterprise, base string, log *slog.Logger) (*Driver, error) {
+	api, err := google.ServiceAccountFromJSON(ctx, creds, base, scope)
 	if err != nil {
 		return nil, err
 	}
 	return &Driver{Store: st, Svc: svc, Enterprise: enterprise, Log: log, api: api}, nil
+}
+
+// Signup is a pending Android Enterprise signup.
+type Signup struct {
+	Name string `json:"name"` // signupUrls/...
+	URL  string `json:"url"`  // where the admin completes signup with Google
+}
+
+// CreateSignupURL starts the Android Enterprise signup. Google redirects the
+// admin's browser to callbackURL with an enterpriseToken query parameter.
+func CreateSignupURL(ctx context.Context, creds []byte, base, projectID, callbackURL string) (*Signup, error) {
+	api, err := google.ServiceAccountFromJSON(ctx, creds, base, scope)
+	if err != nil {
+		return nil, err
+	}
+	var s Signup
+	q := url.Values{"projectId": {projectID}, "callbackUrl": {callbackURL}}
+	if err := api.Do(ctx, http.MethodPost, "signupUrls?"+q.Encode(), map[string]any{}, &s); err != nil {
+		return nil, err
+	}
+	if s.Name == "" || s.URL == "" {
+		return nil, errors.New("Google returned an empty signup URL")
+	}
+	return &s, nil
+}
+
+// CreateEnterprise completes signup and returns the enterprise name
+// (enterprises/LC0...).
+func CreateEnterprise(ctx context.Context, creds []byte, base, projectID, signupName, enterpriseToken, displayName string) (string, error) {
+	api, err := google.ServiceAccountFromJSON(ctx, creds, base, scope)
+	if err != nil {
+		return "", err
+	}
+	var e struct {
+		Name string `json:"name"`
+	}
+	q := url.Values{"projectId": {projectID}, "signupUrlName": {signupName}, "enterpriseToken": {enterpriseToken}}
+	if err := api.Do(ctx, http.MethodPost, "enterprises?"+q.Encode(), map[string]any{"enterpriseDisplayName": displayName}, &e); err != nil {
+		return "", err
+	}
+	if !strings.HasPrefix(e.Name, "enterprises/") {
+		return "", fmt.Errorf("unexpected enterprise name %q", e.Name)
+	}
+	return e.Name, nil
 }
 
 // Platforms implements mdm.Driver.

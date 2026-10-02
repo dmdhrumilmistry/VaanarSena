@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -215,7 +216,11 @@ func (a *API) createToken(w http.ResponseWriter, r *http.Request) {
 	}
 	driverPlatform := map[string]string{"apple": store.PlatformIOS, "windows": store.PlatformWindows, "android": store.PlatformAndroid, "linux": store.PlatformLinux}[req.Platform]
 	if !a.Svc.Enabled(driverPlatform) {
-		httpx.Error(w, http.StatusConflict, req.Platform+" management is not configured on this server")
+		httpx.JSON(w, http.StatusConflict, map[string]any{
+			"error":    notConfigured[req.Platform],
+			"setup":    "/settings/platforms",
+			"platform": req.Platform,
+		})
 		return
 	}
 	if req.Platform == "apple" && req.Ownership == store.OwnershipPersonal && !strings.Contains(req.Assignee, "@") {
@@ -257,7 +262,13 @@ func (a *API) createToken(w http.ResponseWriter, r *http.Request) {
 	case "linux":
 		instructions["command"] = "sudo vaanarsena-agent enroll --server " + a.PublicURL + " --token " + raw
 	case "android":
-		extra, err := a.Android.CreateEnrollment(r.Context(), t)
+		drv := a.Platforms.Android()
+		if drv == nil {
+			_ = a.Store.RevokeEnrollmentToken(r.Context(), t.ID)
+			httpx.JSON(w, http.StatusConflict, map[string]any{"error": notConfigured["android"], "setup": "/settings/platforms", "platform": "android"})
+			return
+		}
+		extra, err := drv.CreateEnrollment(r.Context(), t)
 		if err != nil {
 			_ = a.Store.RevokeEnrollmentToken(r.Context(), t.ID)
 			a.Log.Error("android enrollment token", "err", err)
@@ -473,3 +484,18 @@ func firstNonEmpty(s ...string) string {
 	}
 	return ""
 }
+
+// notConfigured explains, per platform, what an admin must set up before
+// devices can enroll.
+var notConfigured = map[string]string{
+	"apple":   "Apple enrollment needs an Apple MDM push certificate. Add it under Settings > Platforms > Apple.",
+	"android": "Android enrollment needs a Google service account and an Android Enterprise. Connect them under Settings > Platforms > Android.",
+	"windows": "Windows management is not available on this server.",
+	"linux":   "Linux management is not available on this server.",
+}
+
+func decodeBase64(s string) ([]byte, error) {
+	return base64.StdEncoding.DecodeString(strings.Join(strings.Fields(s), ""))
+}
+
+func clientIPOf(r *http.Request) string { return httpx.ClientIP(r) }

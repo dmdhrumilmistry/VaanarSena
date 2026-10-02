@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sync"
 
 	"github.com/dmdhrumilmistry/VaanarSena/internal/command"
 	"github.com/dmdhrumilmistry/VaanarSena/internal/store"
@@ -27,6 +28,7 @@ type Driver interface {
 type Service struct {
 	Store   *store.Store
 	Log     *slog.Logger
+	mu      sync.RWMutex // guards drivers; platforms are reconfigured at runtime
 	drivers map[string]Driver
 }
 
@@ -35,15 +37,31 @@ func New(st *store.Store, log *slog.Logger) *Service {
 	return &Service{Store: st, Log: log, drivers: map[string]Driver{}}
 }
 
-// Register adds a driver.
+// Register adds a driver, replacing any driver for the same platforms.
 func (s *Service) Register(d Driver) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	for _, p := range d.Platforms() {
 		s.drivers[p] = d
 	}
 }
 
+// Unregister removes the drivers for platforms.
+func (s *Service) Unregister(platforms ...string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, p := range platforms {
+		delete(s.drivers, p)
+	}
+}
+
 // Enabled reports whether a driver is registered for platform.
-func (s *Service) Enabled(platform string) bool { _, ok := s.drivers[platform]; return ok }
+func (s *Service) Enabled(platform string) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	_, ok := s.drivers[platform]
+	return ok
+}
 
 // ErrForbidden wraps authorisation failures so the API can map them to 403.
 var ErrForbidden = errors.New("forbidden")
@@ -91,7 +109,9 @@ func (s *Service) EnqueueSystemParams(ctx context.Context, d *store.Device, typ 
 // Wake asks the device's driver to deliver queued work. Errors are logged, not
 // returned: the command stays queued and is delivered at the next check-in.
 func (s *Service) Wake(ctx context.Context, d *store.Device) {
+	s.mu.RLock()
 	drv, ok := s.drivers[d.Platform]
+	s.mu.RUnlock()
 	if !ok {
 		return
 	}

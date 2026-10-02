@@ -30,16 +30,18 @@ import (
 	"github.com/dmdhrumilmistry/VaanarSena/internal/auth"
 	"github.com/dmdhrumilmistry/VaanarSena/internal/mdm"
 	"github.com/dmdhrumilmistry/VaanarSena/internal/pki"
+	"github.com/dmdhrumilmistry/VaanarSena/internal/platforms"
 	"github.com/dmdhrumilmistry/VaanarSena/internal/secrets"
 	"github.com/dmdhrumilmistry/VaanarSena/internal/store"
 )
 
 type env struct {
-	t     *testing.T
-	srv   *httptest.Server
-	st    *store.Store
-	svc   *mdm.Service
-	token string
+	t      *testing.T
+	srv    *httptest.Server
+	st     *store.Store
+	svc    *mdm.Service
+	token  string
+	google *fakeGoogle
 }
 
 func setup(t *testing.T) *env {
@@ -76,13 +78,19 @@ func setup(t *testing.T) *env {
 	srv.TLS = &tls.Config{ClientAuth: tls.VerifyClientCertIfGiven, ClientCAs: ca.Pool(), MinVersion: tls.VersionTLS12}
 	srv.StartTLS()
 	t.Cleanup(srv.Close)
-	(&api.API{Store: st, Auth: authn, Svc: svc, CA: ca, PublicURL: srv.URL, Org: "E2E", Version: "test", Log: log}).Routes(mux)
+	google := newFakeGoogle(t)
+	plat := &platforms.Manager{Store: st, Box: box, Svc: svc, CA: ca, Org: "E2E", PublicURL: srv.URL, Log: log,
+		AndroidBase: google.srv.URL + "/v1/"}
+	plat.Routes(mux)
+	plat.Start(ctx)
+	(&api.API{Store: st, Auth: authn, Svc: svc, CA: ca, PublicURL: srv.URL, Org: "E2E", Version: "test", Log: log,
+		Platforms: plat}).Routes(mux)
 
 	hash, _ := auth.HashPassword("e2e-admin-password")
 	if _, err := st.CreateUser(ctx, "admin@e2e.test", "Admin", hash, store.RoleAdmin); err != nil {
 		t.Fatal(err)
 	}
-	e := &env{t: t, srv: srv, st: st, svc: svc}
+	e := &env{t: t, srv: srv, st: st, svc: svc, google: google}
 	var login struct{ Token string }
 	e.call("POST", "/api/v1/auth/login", `{"email":"admin@e2e.test","password":"e2e-admin-password"}`, 200, &login)
 	e.token = login.Token

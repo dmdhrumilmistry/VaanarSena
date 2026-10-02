@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"time"
 )
 
@@ -30,7 +31,20 @@ var oidUID = asn1.ObjectIdentifier{0, 9, 2342, 19200300, 100, 1, 1}
 // NewPusher loads the push certificate. topic may be empty to read it from the
 // certificate's UID attribute.
 func NewPusher(certFile, keyFile, topic string) (*Pusher, error) {
-	pair, err := tls.LoadX509KeyPair(certFile, keyFile)
+	certPEM, err := os.ReadFile(certFile)
+	if err != nil {
+		return nil, err
+	}
+	keyPEM, err := os.ReadFile(keyFile)
+	if err != nil {
+		return nil, err
+	}
+	return NewPusherPEM(certPEM, keyPEM, topic)
+}
+
+// NewPusherPEM is NewPusher with the certificate and key in memory.
+func NewPusherPEM(certPEM, keyPEM []byte, topic string) (*Pusher, error) {
+	pair, err := tls.X509KeyPair(certPEM, keyPEM)
 	if err != nil {
 		return nil, fmt.Errorf("load APNs certificate: %w", err)
 	}

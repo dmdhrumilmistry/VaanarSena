@@ -17,16 +17,14 @@ import (
 	"time"
 
 	"github.com/dmdhrumilmistry/VaanarSena/internal/agent"
-	"github.com/dmdhrumilmistry/VaanarSena/internal/android"
 	"github.com/dmdhrumilmistry/VaanarSena/internal/api"
-	"github.com/dmdhrumilmistry/VaanarSena/internal/apple"
 	"github.com/dmdhrumilmistry/VaanarSena/internal/auth"
-	"github.com/dmdhrumilmistry/VaanarSena/internal/chromeos"
 	"github.com/dmdhrumilmistry/VaanarSena/internal/config"
 	"github.com/dmdhrumilmistry/VaanarSena/internal/httpx"
 	"github.com/dmdhrumilmistry/VaanarSena/internal/manifest"
 	"github.com/dmdhrumilmistry/VaanarSena/internal/mdm"
 	"github.com/dmdhrumilmistry/VaanarSena/internal/pki"
+	"github.com/dmdhrumilmistry/VaanarSena/internal/platforms"
 	"github.com/dmdhrumilmistry/VaanarSena/internal/secrets"
 	"github.com/dmdhrumilmistry/VaanarSena/internal/store"
 	"github.com/dmdhrumilmistry/VaanarSena/internal/web"
@@ -220,21 +218,6 @@ func serve() error {
 	authn := auth.New(st, box, cfg.SessionTTL, secure)
 	apiSrv := &api.API{Store: st, Auth: authn, Svc: svc, CA: ca, PublicURL: cfg.PublicURL, Org: cfg.OrgName, Version: version, Log: log}
 
-	if cfg.AppleEnabled() {
-		pusher, err := apple.NewPusher(cfg.APNsCertFile, cfg.APNsKeyFile, cfg.APNsTopic)
-		if err != nil {
-			return err
-		}
-		if time.Until(pusher.Expiry) < 30*24*time.Hour {
-			log.Warn("APNs push certificate expires soon; renew it at identity.apple.com with the same Apple ID", "expires", pusher.Expiry)
-		}
-		drv := &apple.Driver{Store: st, Svc: svc, CA: ca, Box: box, Pusher: pusher, Org: cfg.OrgName,
-			PublicURL: cfg.PublicURL, CertHeader: cfg.ClientCertHeader, Log: log}
-		svc.Register(drv)
-		drv.Routes(mux)
-		log.Info("apple MDM enabled", "topic", pusher.Topic)
-	}
-
 	win := &windows.Driver{Store: st, Svc: svc, CA: ca, Org: cfg.OrgName, PublicURL: cfg.PublicURL, CertHeader: cfg.ClientCertHeader, Log: log}
 	svc.Register(win)
 	win.Routes(mux)
@@ -243,25 +226,19 @@ func serve() error {
 	svc.Register(lin)
 	lin.Routes(mux)
 
-	if cfg.AndroidEnabled() {
-		drv, err := android.New(ctx, st, svc, cfg.GoogleCredentialsFile, cfg.AndroidEnterprise, log)
-		if err != nil {
-			return fmt.Errorf("android: %w", err)
-		}
-		svc.Register(drv)
-		apiSrv.Android = drv
-		go drv.Run(ctx, 5*time.Minute)
-		log.Info("android management enabled", "enterprise", cfg.AndroidEnterprise)
+	plat := &platforms.Manager{
+		Store: st, Box: box, Svc: svc, CA: ca, Org: cfg.OrgName, PublicURL: cfg.PublicURL,
+		CertHeader: cfg.ClientCertHeader, Log: log,
+		Env: platforms.Env{
+			APNsCertFile: cfg.APNsCertFile, APNsKeyFile: cfg.APNsKeyFile, APNsTopic: cfg.APNsTopic,
+			GoogleCredentialsFile: cfg.GoogleCredentialsFile, GoogleProjectID: cfg.GoogleProjectID,
+			AndroidEnterprise: cfg.AndroidEnterprise, GoogleAdminSubject: cfg.GoogleAdminSubject,
+			GoogleCustomerID: cfg.GoogleCustomerID,
+		},
 	}
-	if cfg.ChromeOSEnabled() {
-		drv, err := chromeos.New(ctx, st, cfg.GoogleCredentialsFile, cfg.GoogleAdminSubject, cfg.GoogleCustomerID, log)
-		if err != nil {
-			return fmt.Errorf("chromeos: %w", err)
-		}
-		svc.Register(drv)
-		go drv.Run(ctx, 15*time.Minute)
-		log.Info("chromeos management enabled")
-	}
+	plat.Routes(mux)
+	plat.Start(ctx)
+	apiSrv.Platforms = plat
 
 	apiSrv.Routes(mux)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte("ok")) })

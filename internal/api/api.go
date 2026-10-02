@@ -2,7 +2,6 @@
 package api
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -14,13 +13,9 @@ import (
 	"github.com/dmdhrumilmistry/VaanarSena/internal/httpx"
 	"github.com/dmdhrumilmistry/VaanarSena/internal/mdm"
 	"github.com/dmdhrumilmistry/VaanarSena/internal/pki"
+	"github.com/dmdhrumilmistry/VaanarSena/internal/platforms"
 	"github.com/dmdhrumilmistry/VaanarSena/internal/store"
 )
-
-// AndroidEnroller creates AMAPI enrollment artefacts for a token.
-type AndroidEnroller interface {
-	CreateEnrollment(ctx context.Context, t *store.EnrollmentToken) (map[string]any, error)
-}
 
 // API serves the admin endpoints.
 type API struct {
@@ -30,7 +25,7 @@ type API struct {
 	CA        *pki.CA
 	PublicURL string
 	Org       string
-	Android   AndroidEnroller // nil when Android is not configured
+	Platforms *platforms.Manager
 	Version   string
 	Log       *slog.Logger
 }
@@ -101,6 +96,8 @@ func (a *API) Routes(mux *http.ServeMux) {
 	mux.Handle("DELETE /api/v1/api-tokens/{id}", auditor(a.deleteAPIToken))
 
 	mux.Handle("GET /api/v1/audit", auditor(a.listAudit))
+
+	a.platformRoutes(mux)
 
 	mux.HandleFunc("GET /mdm/ca.pem", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/x-pem-file")
