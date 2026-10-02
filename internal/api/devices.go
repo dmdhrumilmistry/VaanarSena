@@ -98,6 +98,14 @@ func (a *API) patchDevice(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, err)
 		return
 	}
+	if req.Ownership != nil && d.IsPersonal() {
+		// BYOD: software collected while the device was corporate is removed;
+		// what the platform allows for personal devices is collected again.
+		if err := a.Store.DeleteInventory(r.Context(), d.ID); err != nil {
+			a.fail(w, err)
+			return
+		}
+	}
 	httpx.JSON(w, http.StatusOK, redact(d))
 }
 

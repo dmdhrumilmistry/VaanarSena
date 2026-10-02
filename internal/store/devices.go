@@ -234,6 +234,7 @@ type DeviceStats struct {
 	ByStatus     map[string]int `json:"byStatus"`
 	NonCompliant int            `json:"nonCompliant"`
 	StaleDays7   int            `json:"stale7d"`
+	Software     SoftwareStats  `json:"software"`
 }
 
 // Stats computes fleet statistics.
@@ -260,6 +261,10 @@ func (s *Store) Stats(ctx context.Context) (*DeviceStats, error) {
 		count(*) FILTER (WHERE compliant = false AND status = 'enrolled'),
 		count(*) FILTER (WHERE status = 'enrolled' AND (last_seen_at IS NULL OR last_seen_at < now() - interval '7 days'))
 		FROM devices`).Scan(&st.NonCompliant, &st.StaleDays7)
+	if err != nil {
+		return nil, err
+	}
+	st.Software, err = s.softwareStats(ctx)
 	return st, err
 }
 

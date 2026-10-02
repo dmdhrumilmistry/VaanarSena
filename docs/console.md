@@ -35,6 +35,29 @@ are offered.
 
 ![A device](assets/screens/device.png)
 
+## Software
+
+![Software](assets/screens/software.png)
+
+**Software** lists what is installed and running across the fleet: apps,
+services and configuration profiles, grouped by name with the number of
+devices and the most common versions. Select a row to see which devices have
+it and at which version. Each device also has a **Software** tab with its own
+list, search, CSV export and a button to refresh it.
+
+| Platform | Apps | Services | Profiles |
+|---|---|---|---|
+| Linux | dpkg, rpm, pacman, apk, flatpak and snap packages | systemd services, with state and whether they start at boot | |
+| macOS, iOS, iPadOS | installed apps | | configuration profiles |
+| Windows | Microsoft Store and packaged apps, MSI installs | | |
+| Android | apps from the device's app reports | | |
+| ChromeOS | not available per device from Google | | |
+
+Personal devices report less, and the server enforces it: Linux and Windows
+send no software at all, Apple devices list only managed apps, and Android
+lists only the work profile's apps. The device's Software tab says what is
+collected for it.
+
 ## Groups
 
 ![A smart group](assets/screens/smart-group.png)

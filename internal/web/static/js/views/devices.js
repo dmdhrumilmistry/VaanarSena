@@ -1,6 +1,7 @@
 import { h, api, state, link, table, platformTag, ownershipTag, complianceTag, statusTag, ago, fmtTime,
   can, emptyState, go, toast, confirmDialog, notice, tabs, tabBar, icon, groupsCache, copyButton, menu, chip, badge, PLATFORM, platformLabel, panel, body } from "../core.js";
 import { select, tagsInput, field } from "../forms.js";
+import { deviceSoftware } from "./software.js";
 import { paramsForm, allowedCommands, commandLabel, commandDrawer, quickSend, INSTANT_TYPES, deliveryNote } from "../commands.js";
 
 const RANK = { auditor: 1, operator: 2, admin: 3 };
@@ -402,6 +403,7 @@ export async function detail(id) {
       { id: "commands", label: "Commands", render: commandsTab },
       { id: "policy", label: "Policy", render: policyTab },
       { id: "inventory", label: "Inventory", render: inventoryTab },
+      { id: "software", label: "Software", render: () => deviceSoftware(d, allowed.find((c) => c.type === "refresh")) },
       { id: "groups", label: "Groups and tags", render: groupsTab },
     ], tab));
 }

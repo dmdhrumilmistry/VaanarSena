@@ -2,6 +2,7 @@
 import { h, api, state, icon, go, link, errorNotice, can, menu, skeleton, initials, platformLabel } from "./core.js";
 import * as dash from "./views/dashboard.js";
 import * as devices from "./views/devices.js";
+import * as software from "./views/software.js";
 import * as enroll from "./views/enroll.js";
 import * as policies from "./views/policies.js";
 import * as groups from "./views/groups.js";
@@ -11,7 +12,7 @@ import * as admin from "./views/admin.js";
 import * as settings from "./views/settings.js";
 
 const NAV = [
-  ["Fleet", [["/", "Overview", "dashboard"], ["/devices", "Devices", "devices"], ["/groups", "Groups", "groups"]]],
+  ["Fleet", [["/", "Overview", "dashboard"], ["/devices", "Devices", "devices"], ["/software", "Software", "software"], ["/groups", "Groups", "groups"]]],
   ["Configure", [["/policies", "Policies", "policy"], ["/blueprints", "Blueprints", "blueprint"], ["/manifests", "Manifests", "manifest", "admin"]]],
   ["Onboard", [["/enroll", "Enroll devices", "enroll", "operator"]]],
   ["Govern", [["/users", "Users", "users", "admin"], ["/audit", "Audit log", "audit"], ["/settings/platforms", "Settings", "settings", "admin"]]],
@@ -21,6 +22,7 @@ const ROUTES = [
   [/^\/$/, dash.view],
   [/^\/devices$/, devices.list],
   [/^\/devices\/([\w-]+)$/, devices.detail],
+  [/^\/software$/, software.view],
   [/^\/enroll$/, enroll.view],
   [/^\/policies$/, policies.list],
   [/^\/policies\/([\w-]+)$/, policies.edit],

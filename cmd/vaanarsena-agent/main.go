@@ -209,6 +209,8 @@ type runner struct {
 	pending  []agent.Result
 	policyV  string
 	policy   *policy.Document
+	known    bool // the server has answered at least once, so personal is current
+	inv      inventoryState
 }
 
 func run(args []string) error {
@@ -246,12 +248,19 @@ func run(args []string) error {
 
 var errRetired = errors.New("retired")
 
-func (r *runner) checkin(ctx context.Context) (time.Duration, error) {
+// request builds a check-in: facts, results, compliance and, when due,
+// software inventory.
+func (r *runner) request(ctx context.Context) agent.CheckinRequest {
 	req := agent.CheckinRequest{Facts: facts(r.personal), Results: r.pending, PolicyVersion: r.policyV}
 	if r.policy != nil {
 		req.Compliance = evaluate(r.policy)
 	}
-	body, _ := json.Marshal(req)
+	req.Inventory = r.inv.next(ctx, time.Now(), r.personal, r.known, collectInventory)
+	return req
+}
+
+func (r *runner) checkin(ctx context.Context) (time.Duration, error) {
+	body, _ := json.Marshal(r.request(ctx))
 	hreq, _ := http.NewRequestWithContext(ctx, http.MethodPost, r.st.Server+"/agent/v1/checkin", bytes.NewReader(body))
 	hreq.Header.Set("Content-Type", "application/json")
 	resp, err := r.client.Do(hreq)
@@ -271,7 +280,8 @@ func (r *runner) checkin(ctx context.Context) (time.Duration, error) {
 		return 0, err
 	}
 	r.pending = nil
-	r.personal = cr.Personal
+	r.personal, r.known = cr.Personal, true
+	r.inv.sent(time.Now())
 	policyChanged := false
 	if cr.PolicyVersion != r.policyV && cr.Policy != nil {
 		r.policy, r.policyV = cr.Policy, cr.PolicyVersion
@@ -302,11 +312,7 @@ func (r *runner) checkin(ctx context.Context) (time.Duration, error) {
 
 // flush sends results immediately rather than waiting for the next poll.
 func (r *runner) flush(ctx context.Context) {
-	req := agent.CheckinRequest{Facts: facts(r.personal), Results: r.pending, PolicyVersion: r.policyV}
-	if r.policy != nil {
-		req.Compliance = evaluate(r.policy)
-	}
-	body, _ := json.Marshal(req)
+	body, _ := json.Marshal(r.request(ctx))
 	hreq, _ := http.NewRequestWithContext(ctx, http.MethodPost, r.st.Server+"/agent/v1/checkin", bytes.NewReader(body))
 	hreq.Header.Set("Content-Type", "application/json")
 	resp, err := r.client.Do(hreq)
@@ -316,6 +322,7 @@ func (r *runner) flush(ctx context.Context) {
 	resp.Body.Close()
 	if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusGone {
 		r.pending = nil
+		r.inv.sent(time.Now())
 		r.savePending()
 	}
 }
@@ -354,7 +361,12 @@ func (r *runner) execute(ctx context.Context, c agent.Command) agent.Result {
 	var out string
 	switch c.Type {
 	case command.Refresh, command.ApplyPolicy:
-		// Facts are sent on every check-in; policy is applied on receipt.
+		// Facts are sent on every check-in; policy is applied on receipt. A
+		// refresh also asks for a fresh software inventory with the result.
+		if c.Type == command.Refresh {
+			r.inv.force = true
+		}
+
 	case command.Lock:
 		out, err = sh(ctx, time.Minute, "loginctl", "lock-sessions")
 	case command.Restart:

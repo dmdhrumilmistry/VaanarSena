@@ -72,6 +72,7 @@ const ICONS = {
   arrowRight: "M5 12h14M13 6l6 6-6 6",
   clock: "M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM12 6v6l4 2",
   shield: "M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6z",
+  software: "M21 8 12 3 3 8v8l9 5 9-5zM3 8l9 5 9-5M12 13v8",
   linux: "M12 3c-2 0-3 2-3 4.5 0 2-1.5 3.5-2.5 5.5S5 17 6 18.5 9 20 12 20s5 .1 6-1.5.5-3.5-.5-5.5S15 9.5 15 7.5C15 5 14 3 12 3zM10 8h.01M14 8h.01M10.5 11h3",
 };
 
@@ -335,6 +336,21 @@ export const badge = (label, tone = "") => h("span", { class: "badge " + tone },
 export function initials(name) {
   const parts = String(name || "?").replace(/@.*/, "").split(/[\s._-]+/).filter(Boolean);
   return ((parts[0] || "?")[0] + (parts.length > 1 ? parts[parts.length - 1][0] : "")).toUpperCase();
+}
+
+// downloadCsv(filename, head, rows): quotes every cell and neutralizes spreadsheet
+// formulas (a leading = + - @ tab or CR gets a quote prefix) so untrusted text is safe to open.
+function csvCell(v) {
+  let t = v === null || v === undefined ? "" : String(v);
+  if (/^[=+\-@\t\r]/.test(t)) t = "'" + t;
+  return '"' + t.replace(/"/g, '""') + '"';
+}
+export function downloadCsv(filename, head, rows) {
+  const lines = [head.map(csvCell).join(",")].concat(rows.map((r) => r.map(csvCell).join(",")));
+  const url = URL.createObjectURL(new Blob([lines.join("\r\n") + "\r\n"], { type: "text/csv" }));
+  const a = h("a", { href: url, download: filename });
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 // ---------- formatting ----------

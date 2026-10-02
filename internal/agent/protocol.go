@@ -43,6 +43,28 @@ type Compliance struct {
 	Issues    []string `json:"issues,omitempty"`
 }
 
+// InventoryItem is one installed package or systemd service.
+type InventoryItem struct {
+	Name       string            `json:"name"`
+	Identifier string            `json:"identifier,omitempty"`
+	Version    string            `json:"version,omitempty"`
+	Publisher  string            `json:"publisher,omitempty"`
+	Source     string            `json:"source"`          // dpkg rpm pacman apk flatpak snap systemd
+	State      string            `json:"state,omitempty"` // services: running stopped failed
+	Details    map[string]string `json:"details,omitempty"`
+}
+
+// Inventory is the software the agent found. It is sent on the first check-in,
+// when Hash changes, at least daily and after a refresh, and never by an
+// agent in personal mode. A nil list leaves what the server has untouched
+// (the agent found no tool able to produce it).
+type Inventory struct {
+	Apps     []InventoryItem `json:"apps,omitempty"`
+	Services []InventoryItem `json:"services,omitempty"`
+	// Hash identifies the content, so the agent can tell when it changed.
+	Hash string `json:"hash,omitempty"`
+}
+
 // CheckinRequest is sent on every poll.
 type CheckinRequest struct {
 	Facts      map[string]any `json:"facts"`
@@ -50,6 +72,8 @@ type CheckinRequest struct {
 	Compliance *Compliance    `json:"compliance,omitempty"`
 	// PolicyVersion is the hash of the last policy applied.
 	PolicyVersion string `json:"policyVersion,omitempty"`
+	// Inventory is present only when there is something new to report.
+	Inventory *Inventory `json:"inventory,omitempty"`
 }
 
 // Command is a queued command delivered to the agent.

@@ -7,11 +7,12 @@ const plural = (n, one, many) => n + " " + (n === 1 ? one : many);
 const GROUPS = [["Windows", ["windows"]], ["macOS", ["macos"]], ["iOS and iPadOS", ["ios", "ipados"]], ["Android", ["android"]], ["ChromeOS", ["chromeos"]], ["Linux", ["linux"]]];
 
 export async function view() {
-  const [s, attentionRes, plat, audit] = await Promise.all([
+  const [s, attentionRes, plat, audit, topApps] = await Promise.all([
     api("GET", "/stats"),
     api("GET", "/devices?status=enrolled&limit=500"),
     can("admin") ? api("GET", "/platforms").catch(() => null) : Promise.resolve(null),
     api("GET", "/audit?limit=5").catch(() => null),
+    api("GET", "/inventory/software?kind=app&limit=6").catch(() => null),
   ]);
   const enrolled = s.byStatus.enrolled || 0;
   const attention = attentionRes.devices.filter(needsAttention);
@@ -75,8 +76,29 @@ export async function view() {
 
   return page({ title: "Overview", sub: "Fleet health across every platform.", actions },
     kpis,
-    h("div", { class: "overview-grid" }, attentionPanel, h("div", { class: "overview-side" }, composition, activity)),
+    h("div", { class: "overview-grid" }, attentionPanel, h("div", { class: "overview-side" }, composition, softwarePanel(s.software, topApps), activity)),
     plat ? platformReadiness(plat) : null);
+}
+
+// Distinct apps, devices reporting and the six most widespread apps. Hidden when the data is missing.
+function softwarePanel(sw, top) {
+  if (!sw || !top || !Array.isArray(top.items)) return null;
+  const items = top.items;
+  const max = Math.max(1, ...items.map((i) => i.devices));
+  return panel({ title: "Software", actions: [link("/software", "View all")] },
+    body(h("div", { class: "sw-stats" },
+      h("div", {}, h("span", { class: "sw-stat-n" }, (sw.apps || 0).toLocaleString()), h("span", { class: "sw-stat-l" }, "distinct apps")),
+      h("div", {}, h("span", { class: "sw-stat-n" }, (sw.devicesReporting || 0).toLocaleString()), h("span", { class: "sw-stat-l" }, "devices reporting"))),
+    items.length
+      ? [h("h3", { class: "sw-top-h" }, "Most widespread apps"),
+        h("ul", { class: "plat-bars" }, items.map((it) => {
+          const m = h("span", { class: "plat-fill" }); m.style.width = (100 * it.devices / max) + "%";
+          return h("li", {}, h("div", { class: "plat-bar-top" },
+            link("/software?q=" + encodeURIComponent(it.name), h("span", { class: "sw-top-name" }, it.name)),
+            h("span", { class: "num" }, it.devices.toLocaleString())),
+          h("div", { class: "meter", "aria-hidden": "true" }, m));
+        }))]
+      : h("p", { class: "muted" }, "Installed apps appear here once devices check in.")));
 }
 
 function platformReadiness(plat) {

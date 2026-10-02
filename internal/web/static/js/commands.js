@@ -8,6 +8,8 @@ export const COMMAND_LABELS = {
   lock: "Lock", restart: "Restart", shutdown: "Shut down", clear_passcode: "Clear passcode",
   enable_lost_mode: "Enable lost mode", disable_lost_mode: "Disable lost mode", locate: "Locate",
   os_update: "Install OS updates", run_script: "Run script", retire: "Retire", wipe: "Erase device",
+  app_inventory: "Read installed apps", profile_inventory: "Read configuration profiles",
+  msi_inventory: "Read installed desktop apps", msi_inventory_detail: "Read desktop app details",
 };
 export const commandLabel = (t) => COMMAND_LABELS[t] || t;
 

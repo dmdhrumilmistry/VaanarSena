@@ -126,6 +126,9 @@ func (d *Driver) recordResult(ctx context.Context, dev *store.Device, rep *repor
 	switch cmd.Type {
 	case command.Refresh:
 		d.ingestDeviceInformation(ctx, dev, body)
+		d.queueInventory(ctx, dev)
+	case command.AppInventory, command.ProfileInventory:
+		d.ingestInventory(ctx, dev, cmd.Type, body)
 	case command.ApplyPolicy:
 		d.queueRequiredApps(ctx, dev)
 	case command.Retire:
@@ -205,6 +208,11 @@ func (d *Driver) build(ctx context.Context, dev *store.Device, cmd *store.Comman
 			q = queriesPersonal
 		}
 		c["RequestType"], c["Queries"] = "DeviceInformation", q
+	case command.AppInventory:
+		// Personal devices (User Enrollment): only apps the MDM manages.
+		c["RequestType"], c["ManagedAppsOnly"] = "InstalledApplicationList", dev.IsPersonal()
+	case command.ProfileInventory:
+		c["RequestType"], c["ManagedOnly"] = "ProfileList", dev.IsPersonal()
 	case command.ApplyPolicy:
 		doc, err := mdm.EffectivePolicy(ctx, d.Store, dev.ID)
 		if err != nil {

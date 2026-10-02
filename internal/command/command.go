@@ -29,6 +29,16 @@ const (
 	Wipe            = "wipe"       // factory reset
 )
 
+// Internal command types. The server queues them itself to collect inventory
+// after a refresh; they are not in the Catalogue and cannot be sent by hand,
+// but they appear in a device's command history under their Description.
+const (
+	AppInventory       = "app_inventory"        // Apple InstalledApplicationList
+	ProfileInventory   = "profile_inventory"    // Apple ProfileList
+	MSIInventory       = "msi_inventory"        // Windows: list installed MSI products
+	MSIInventoryDetail = "msi_inventory_detail" // Windows: read name and version of each product
+)
+
 // Spec describes a command.
 type Spec struct {
 	Type        string `json:"type"`
@@ -85,6 +95,16 @@ var Catalogue = []Spec{
 		join(apple, []string{store.PlatformWindows, store.PlatformAndroid, store.PlatformChromeOS})},
 }
 
+// internalCatalogue lists the server-queued commands. Windows inventory is
+// not permitted on personal devices (the BYOD rule is the Personal flag);
+// Apple inventory is, limited to managed apps and MDM-installed profiles.
+var internalCatalogue = []Spec{
+	{AppInventory, "Read installed apps", store.RoleAdmin, false, true, apple},
+	{ProfileInventory, "Read configuration profiles", store.RoleAdmin, false, true, apple},
+	{MSIInventory, "Read installed desktop apps", store.RoleAdmin, false, false, []string{store.PlatformWindows}},
+	{MSIInventoryDetail, "Read desktop app details", store.RoleAdmin, false, false, []string{store.PlatformWindows}},
+}
+
 var byType = func() map[string]Spec {
 	m := map[string]Spec{}
 	for _, s := range Catalogue {
@@ -93,8 +113,30 @@ var byType = func() map[string]Spec {
 	return m
 }()
 
-// Lookup returns the spec for a command type.
+var internalByType = func() map[string]Spec {
+	m := map[string]Spec{}
+	for _, s := range internalCatalogue {
+		m[s.Type] = s
+	}
+	return m
+}()
+
+// Lookup returns the spec for a user-facing command type.
 func Lookup(typ string) (Spec, bool) { s, ok := byType[typ]; return s, ok }
+
+// IsInternal reports whether typ is a server-queued command.
+func IsInternal(typ string) bool { _, ok := internalByType[typ]; return ok }
+
+// Label returns a readable name for any command type, including internal ones.
+func Label(typ string) string {
+	if s, ok := byType[typ]; ok {
+		return s.Description
+	}
+	if s, ok := internalByType[typ]; ok {
+		return s.Description
+	}
+	return typ
+}
 
 // Params carried by commands.
 type Params struct {
@@ -112,6 +154,11 @@ type Params struct {
 	// product version, both required by the EnterpriseDesktopAppManagement CSP.
 	Hash    string `json:"hash,omitempty"`
 	Version string `json:"version,omitempty"`
+	// Products lists the MSI ProductCodes to read for msi_inventory_detail.
+	Products []string `json:"products,omitempty"`
+	// Inventory carries items read by msi_inventory (Store packages) so that
+	// msi_inventory_detail can store them together with the MSI products.
+	Inventory []store.InventoryItem `json:"inventory,omitempty"`
 	// Script is the run_script body.
 	Script string `json:"script,omitempty"`
 	// PreserveDataPlan keeps the eSIM plan on wipe (iOS).
@@ -134,6 +181,20 @@ func Authorize(role string, d *store.Device, typ string, params Params) error {
 	if !ok {
 		return fmt.Errorf("unknown command %q", typ)
 	}
+	return authorize(role, spec, d, typ, params)
+}
+
+// AuthorizeInternal applies the platform, BYOD and status rules to a
+// server-queued command. Only the server calls it; typ must be internal.
+func AuthorizeInternal(d *store.Device, typ string) error {
+	spec, ok := internalByType[typ]
+	if !ok {
+		return fmt.Errorf("unknown internal command %q", typ)
+	}
+	return authorize(store.RoleAdmin, spec, d, typ, Params{})
+}
+
+func authorize(role string, spec Spec, d *store.Device, typ string, params Params) error {
 	if !roleAtLeast(role, spec.MinRole) {
 		return fmt.Errorf("command %s requires role %s", typ, spec.MinRole)
 	}

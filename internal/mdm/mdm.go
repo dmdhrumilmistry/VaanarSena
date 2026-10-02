@@ -93,6 +93,17 @@ func (s *Service) EnqueueSystem(ctx context.Context, d *store.Device, typ string
 	return err
 }
 
+// EnqueueInternal queues a server-only command (inventory collection) with
+// the platform and BYOD rules applied. It does not wake the device: callers
+// run while the device is already connected or about to be woken.
+func (s *Service) EnqueueInternal(ctx context.Context, d *store.Device, typ string, params json.RawMessage) error {
+	if err := command.AuthorizeInternal(d, typ); err != nil {
+		return err
+	}
+	_, err := s.Store.EnqueueCommand(ctx, d.ID, typ, params, nil)
+	return err
+}
+
 // EnqueueSystemParams is EnqueueSystem with parameters (blueprint steps).
 func (s *Service) EnqueueSystemParams(ctx context.Context, d *store.Device, typ string, params json.RawMessage) error {
 	p, err := command.ParseParams(params)

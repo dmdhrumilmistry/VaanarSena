@@ -34,6 +34,32 @@ type item struct {
 	Data string `xml:"Data"`
 }
 
+// UnmarshalXML keeps Data as text when the device escapes it, and as the raw
+// markup when it embeds XML directly (AppInventoryResults may do either).
+func (it *item) UnmarshalXML(dec *xml.Decoder, start xml.StartElement) error {
+	var raw struct {
+		Source locURI `xml:"Source"`
+		Target locURI `xml:"Target"`
+		Meta   struct {
+			Type   string `xml:"Type"`
+			Format string `xml:"Format"`
+		} `xml:"Meta"`
+		Data struct {
+			Text  string `xml:",chardata"`
+			Inner string `xml:",innerxml"`
+		} `xml:"Data"`
+	}
+	if err := dec.DecodeElement(&raw, &start); err != nil {
+		return err
+	}
+	it.Source, it.Target, it.Meta.Type, it.Meta.Format = raw.Source, raw.Target, raw.Meta.Type, raw.Meta.Format
+	it.Data = raw.Data.Text
+	if inner := strings.TrimSpace(raw.Data.Inner); strings.HasPrefix(inner, "<") && !strings.HasPrefix(inner, "<![CDATA[") {
+		it.Data = inner
+	}
+	return nil
+}
+
 type dmCmd struct {
 	CmdID string `xml:"CmdID"`
 	Data  string `xml:"Data"`
@@ -227,8 +253,10 @@ func (d *Driver) recordResults(ctx context.Context, dev *store.Device, msg *sync
 			}
 			answered++
 			code, _ := strconv.Atoi(s.Data)
-			// 404 on a Get just means the node is absent on this build.
-			if code >= 300 && !(c.Type == command.Refresh && code == 404) {
+			// 404 on a Get just means the node is absent on this build. The
+			// inventory read also tolerates a refused AppInventoryQuery, so an
+			// older build still reports its MSI products.
+			if code >= 300 && !(readsOptionalNodes(c.Type) && (code == 404 || c.Type == command.MSIInventory)) {
 				failures = append(failures, fmt.Sprintf("%s CmdID %s: status %s", s.Cmd, id, s.Data))
 			}
 			for _, it := range resultsByRef[key] {
@@ -267,6 +295,11 @@ func (d *Driver) afterAck(ctx context.Context, dev *store.Device, c *store.Comma
 			p.Compliant = &compliant
 		}
 		_, _ = d.Store.PatchDevice(ctx, dev.ID, p)
+		if !dev.IsPersonal() {
+			d.queueMSIInventory(ctx, dev)
+		}
+	case command.MSIInventory, command.MSIInventoryDetail:
+		d.afterInventory(ctx, dev, c, results)
 	case command.Retire:
 		st := store.StatusRetired
 		_, _ = d.Store.PatchDevice(ctx, dev.ID, store.DevicePatch{Status: &st})
@@ -275,6 +308,12 @@ func (d *Driver) afterAck(ctx context.Context, dev *store.Device, c *store.Comma
 		_, _ = d.Store.PatchDevice(ctx, dev.ID, store.DevicePatch{Status: &st})
 		_ = d.Store.CancelPendingCommands(ctx, dev.ID)
 	}
+}
+
+// readsOptionalNodes reports whether a command only reads nodes that may be
+// missing on some builds.
+func readsOptionalNodes(typ string) bool {
+	return typ == command.Refresh || typ == command.MSIInventory || typ == command.MSIInventoryDetail
 }
 
 var refreshNodes = []string{
@@ -332,6 +371,22 @@ func (d *Driver) translate(ctx context.Context, dev *store.Device, c *store.Comm
 				// MSI installs need a hash and version, which policies do not
 				// carry; use the install_app command for those.
 				d.Log.Debug("windows policy app requires install_app command", "app", a.ID)
+			}
+		}
+	case command.MSIInventory:
+		out.get(msiBase)
+		out.replace(policy.SyncMLItem{LocURI: appxQueryNode, Format: "xml", Data: appxQuery})
+		out.get(appxResultsNode)
+	case command.MSIInventoryDetail:
+		if len(p.Products) == 0 {
+			return errors.New("msi_inventory_detail needs products")
+		}
+		if len(p.Products) > maxMSIProducts {
+			p.Products = p.Products[:maxMSIProducts]
+		}
+		for _, code := range p.Products {
+			for _, leaf := range msiLeaves {
+				out.get(msiBase + "/" + url64(code) + "/" + leaf)
 			}
 		}
 	case command.Restart:

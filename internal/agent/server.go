@@ -16,6 +16,7 @@ import (
 	"github.com/dmdhrumilmistry/VaanarSena/internal/httpx"
 	"github.com/dmdhrumilmistry/VaanarSena/internal/mdm"
 	"github.com/dmdhrumilmistry/VaanarSena/internal/pki"
+	"github.com/dmdhrumilmistry/VaanarSena/internal/policy"
 	"github.com/dmdhrumilmistry/VaanarSena/internal/secrets"
 	"github.com/dmdhrumilmistry/VaanarSena/internal/store"
 )
@@ -173,6 +174,7 @@ func (d *Driver) handleCheckin(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		d.Log.Warn("effective policy", "device", dev.ID, "err", err)
 	}
+	d.storeInventory(ctx, dev, req.Inventory, doc)
 	resp := CheckinResponse{Policy: doc, CheckinSeconds: int(CheckinInterval.Seconds()), Personal: dev.IsPersonal()}
 	if doc != nil {
 		b, _ := json.Marshal(doc)
@@ -190,6 +192,54 @@ func (d *Driver) handleCheckin(w http.ResponseWriter, r *http.Request) {
 		resp.Commands = []Command{}
 	}
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// storeInventory records the packages and services an agent reported. BYOD
+// rule: personal devices never have software inventory stored, whatever the
+// agent sends. The agent already stays silent in personal mode; this is the
+// guard against a modified agent.
+func (d *Driver) storeInventory(ctx context.Context, dev *store.Device, inv *Inventory, doc *policy.Document) {
+	if inv == nil || dev.IsPersonal() {
+		return
+	}
+	managed := map[string]bool{}
+	if doc != nil {
+		for _, a := range doc.AppsFor("linux") {
+			managed[a.ID] = true
+		}
+	}
+	if len(inv.Apps) > 0 {
+		if err := d.Store.ReplaceInventory(ctx, dev.ID, store.KindApp, inventoryItems(inv.Apps, "app", managed)); err != nil {
+			d.Log.Warn("store app inventory", "device", dev.ID, "err", err)
+		}
+	}
+	if len(inv.Services) > 0 {
+		if err := d.Store.ReplaceInventory(ctx, dev.ID, store.KindService, inventoryItems(inv.Services, "service", nil)); err != nil {
+			d.Log.Warn("store service inventory", "device", dev.ID, "err", err)
+		}
+	}
+}
+
+func inventoryItems(in []InventoryItem, kind string, managed map[string]bool) []store.InventoryItem {
+	if len(in) > store.MaxInventoryItems {
+		in = in[:store.MaxInventoryItems]
+	}
+	out := make([]store.InventoryItem, 0, len(in))
+	for _, it := range in {
+		si := store.InventoryItem{Name: it.Name, Identifier: it.Identifier, Version: it.Version, Publisher: it.Publisher, Source: it.Source, State: it.State}
+		if si.Identifier == "" {
+			si.Identifier = it.Name
+		}
+		if kind == "app" {
+			si.State = "installed"
+			si.Managed = managed[si.Identifier]
+		}
+		if len(it.Details) > 0 {
+			si.Details, _ = json.Marshal(it.Details)
+		}
+		out = append(out, si)
+	}
+	return out
 }
 
 func merge(a, b map[string]any) map[string]any {

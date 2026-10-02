@@ -172,7 +172,12 @@ func (e *env) enrollAgent(ownership, machineID string) *fakeAgent {
 
 func (a *fakeAgent) checkin(facts map[string]any, results []agent.Result) agent.CheckinResponse {
 	a.e.t.Helper()
-	body, _ := json.Marshal(agent.CheckinRequest{Facts: facts, Results: results})
+	return a.checkinWith(agent.CheckinRequest{Facts: facts, Results: results})
+}
+
+func (a *fakeAgent) checkinWith(req agent.CheckinRequest) agent.CheckinResponse {
+	a.e.t.Helper()
+	body, _ := json.Marshal(req)
 	resp, err := a.client.Post(a.e.srv.URL+"/agent/v1/checkin", "application/json", bytes.NewReader(body))
 	if err != nil {
 		a.e.t.Fatal(err)

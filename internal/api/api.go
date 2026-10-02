@@ -53,6 +53,10 @@ func (a *API) Routes(mux *http.ServeMux) {
 	mux.Handle("POST /api/v1/commands/{id}/cancel", operator(a.cancelCommand))
 	mux.Handle("GET /api/v1/commands/catalogue", auditor(a.catalogue))
 
+	mux.Handle("GET /api/v1/devices/{id}/inventory", auditor(a.deviceInventory))
+	mux.Handle("GET /api/v1/inventory/software", auditor(a.fleetSoftware))
+	mux.Handle("GET /api/v1/inventory/software/devices", auditor(a.softwareDevices))
+
 	mux.Handle("GET /api/v1/enrollment-tokens", operator(a.listTokens))
 	mux.Handle("POST /api/v1/enrollment-tokens", operator(a.createToken))
 	mux.Handle("DELETE /api/v1/enrollment-tokens/{id}", operator(a.revokeToken))

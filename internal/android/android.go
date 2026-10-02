@@ -117,9 +117,7 @@ func basePolicy(ownership string) string { return "vs-base-" + ownership }
 func (d *Driver) CreateEnrollment(ctx context.Context, t *store.EnrollmentToken) (map[string]any, error) {
 	personal := t.Ownership == store.OwnershipPersonal
 	pol := basePolicy(t.Ownership)
-	if err := d.api.Do(ctx, http.MethodPatch, d.Enterprise+"/policies/"+pol, map[string]any{"statusReportingSettings": map[string]any{
-		"softwareInfoEnabled": true, "hardwareStatusEnabled": !personal, "deviceSettingsEnabled": true,
-	}}, nil); err != nil {
+	if err := d.api.Do(ctx, http.MethodPatch, d.Enterprise+"/policies/"+pol, map[string]any{"statusReportingSettings": statusReporting(personal)}, nil); err != nil {
 		return nil, fmt.Errorf("create base policy: %w", err)
 	}
 	extra, _ := json.Marshal(tokenData{TokenID: t.ID})
@@ -176,7 +174,8 @@ type amapiDevice struct {
 		AndroidVersion string `json:"androidVersion"`
 		SecurityPatch  string `json:"securityPatchLevel"`
 	} `json:"softwareInfo"`
-	Ownership string `json:"ownership"`
+	Ownership          string              `json:"ownership"`
+	ApplicationReports []applicationReport `json:"applicationReports"`
 }
 
 // Sync pulls the device list and reconciles it with the database. AMAPI can
@@ -232,8 +231,11 @@ func (d *Driver) reconcile(ctx context.Context, a *amapiDevice) error {
 		if !existing.IsPersonal() {
 			p.Serial = &a.HardwareInfo.SerialNumber
 		}
-		_, err := d.Store.PatchDevice(ctx, existing.ID, p)
-		return err
+		if _, err := d.Store.PatchDevice(ctx, existing.ID, p); err != nil {
+			return err
+		}
+		d.storeApps(ctx, existing, a)
+		return nil
 	}
 
 	// New device: bind it to the VaanarSena token it enrolled with.
@@ -265,6 +267,7 @@ func (d *Driver) reconcile(ctx context.Context, a *amapiDevice) error {
 		return err
 	}
 	mdm.AttachToGroup(ctx, d.Store, tok, dev.ID)
+	d.storeApps(ctx, dev, a)
 	_ = d.Store.Audit(ctx, "device", "device.enroll", dev.ID, map[string]any{"platform": "android", "ownership": tok.Ownership}, "")
 	d.Svc.Bootstrap(ctx, dev)
 	return nil
@@ -317,7 +320,7 @@ func (d *Driver) execute(ctx context.Context, dev *store.Device, c *store.Comman
 			return "", err
 		}
 		pol := doc.AndroidPolicy(dev.IsPersonal())
-		pol["statusReportingSettings"] = map[string]any{"softwareInfoEnabled": true, "hardwareStatusEnabled": !dev.IsPersonal(), "deviceSettingsEnabled": true}
+		pol["statusReportingSettings"] = statusReporting(dev.IsPersonal())
 		name := d.Enterprise + "/policies/" + d.devicePolicy(dev)
 		if err := d.api.Do(ctx, http.MethodPatch, name, pol, nil); err != nil {
 			return "", err

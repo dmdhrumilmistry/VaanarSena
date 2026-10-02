@@ -29,6 +29,9 @@ Minimum role in brackets.
 | POST | `/devices/{id}/commands` | [operator] `{type, params}`; returns 202 with the queued command |
 | POST | `/commands/{id}/cancel` | [operator] |
 | GET | `/commands/catalogue` | [auditor] command types, roles, platforms, BYOD eligibility |
+| GET | `/devices/{id}/inventory?kind=app\|service\|profile&q=&limit=&offset=` | [auditor] installed apps, services or profiles, with `counts`, `supported` and a BYOD `note` |
+| GET | `/inventory/software?kind=&q=&limit=&offset=` | [auditor] software across the fleet with device counts and versions |
+| GET | `/inventory/software/devices?kind=&identifier=&name=&version=` | [auditor] devices that have one piece of software |
 
 Command `params`: `message`, `phone`, `pin` (macOS, 6 digits), `appId`, `url`,
 `hash` and `version` (Windows MSI), `script` (Linux), `preserveDataPlan`.
@@ -87,7 +90,7 @@ onboarding steps. Formats are in [manifests.md](manifests.md).
 | GET, POST | `/users` | [admin] |
 | PATCH, DELETE | `/users/{id}` | [admin] `{name, role, disabled, password}` |
 | GET | `/audit?before=&limit=` | [auditor] |
-| GET | `/stats` | [auditor] |
+| GET | `/stats` | [auditor] includes `software: {apps, devicesReporting}` |
 | GET | `/info` | [auditor] version, enabled platforms, CA fingerprint |
 
 Unauthenticated: `GET /healthz`, `GET /readyz`, `GET /mdm/ca.pem`.

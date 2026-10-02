@@ -39,7 +39,11 @@ around it. The platforms enforce the same boundary on their side:
 - The Linux agent runs in inventory-only mode and refuses commands locally too.
 
 Inventory collected from personal devices excludes serial numbers, IMEI and
-hardware addresses.
+hardware addresses. Software inventory is limited the same way, on the
+server: personal Linux and Windows devices report no apps or services (anything
+a modified client sends is discarded), Apple devices report managed apps only,
+and Android reports only the work profile. Changing a device to personal
+deletes the software already stored for it.
 
 ## Admin authentication
 
