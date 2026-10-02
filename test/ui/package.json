@@ -1,0 +1,14 @@
+{
+  "name": "vaanarsena-ui-tests",
+  "private": true,
+  "description": "Browser tests for the VaanarSena console (see CLAUDE.md and docs/testing.md)",
+  "license": "Apache-2.0",
+  "scripts": {
+    "tour": "node tour.js out light 1440",
+    "flows": "node flows.js",
+    "guard": "node guard.js"
+  },
+  "dependencies": {
+    "playwright-core": "^1.63.0"
+  }
+}

@@ -40,7 +40,40 @@ VS_TEST_DATABASE_URL=postgres://vs:vs@localhost:5432/vs_test?sslmode=disable \
   go test -count=1 -v ./internal/e2e/
 ```
 
-CI runs both layers on every push and pull request.
+CI runs both layers on every push and pull request. Without
+`VS_TEST_DATABASE_URL` the end-to-end tests are skipped, not failed: check
+for `--- PASS` in the verbose output.
+
+### Console tests in a browser
+
+`test/` holds a development server with seed data and browser tests that drive
+the real console:
+
+```bash
+test/dev/start.sh                   # https://localhost:18443, admin@example.com / correct-horse-battery
+bash test/dev/seed.sh               # six Linux devices, one of them personal
+python test/dev/seed-inventory.py   # their apps and services
+cd test/ui && npm install
+node tour.js out light 1440         # screenshots of every page, fails on JS errors
+node flows.js                       # real flows, verified through the API
+```
+
+The dev server serves the console from disk, so edits to
+`internal/web/static` show on reload. The browser tests use an installed Edge
+or Chrome through `playwright-core`; `VS_UI_BASE`, `VS_UI_EMAIL`,
+`VS_UI_PASSWORD` and `VS_UI_CHANNEL` point them elsewhere.
+
+### The Docker image with real agents
+
+```bash
+bash test/docker/agents.sh
+```
+
+Builds the image, starts the Compose stack with TLS, enrolls the real Linux
+agent in Ubuntu, Arch, AlmaLinux (with systemd) and a personal Ubuntu
+container, and checks the software inventory the server stored against each
+distribution's own package tools, and that the personal device stored none.
+It removes only the containers and volume it created.
 
 ## 2. A local stack with real HTTPS
 

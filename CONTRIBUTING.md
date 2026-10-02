@@ -14,14 +14,14 @@ Thanks for helping. A few ground rules keep the project healthy:
 ## Development
 
 ```bash
-docker run -d --name vs-pg -e POSTGRES_USER=vaanarsena -e POSTGRES_PASSWORD=vaanarsena \
-  -e POSTGRES_DB=vaanarsena -p 5432:5432 postgres:17-alpine
-export VS_SECRET_KEY=$(openssl rand -hex 32)
-export VS_BOOTSTRAP_ADMIN_EMAIL=admin@example.com VS_BOOTSTRAP_ADMIN_PASSWORD=change-me-please
-go run ./cmd/vaanarsena serve
+test/dev/start.sh          # dev server on https://localhost:18443 with PostgreSQL in Docker
+bash test/dev/seed.sh      # sample devices
 ```
 
-The console is plain JavaScript in `internal/web/static`, with no build step.
+The console is plain JavaScript in `internal/web/static`, with no build step;
+the dev server serves it from disk. See [docs/testing.md](docs/testing.md) for
+every test layer and [CLAUDE.md](CLAUDE.md) for project conventions and the
+pre-commit checklist.
 
 ## Commit style
 
