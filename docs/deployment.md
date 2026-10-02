@@ -57,6 +57,13 @@ You have two options:
    so supply it with `VS_CA_CERT_FILE` / `VS_CA_KEY_FILE` instead of letting
    the server generate one. The Helm chart does all of this for you.
 
+   With **Traefik** (the k3s default), use a TLSOption with
+   `clientAuth.clientAuthType: RequestClientCert` and a `passTLSClientCert`
+   middleware with `pem: true`, and set
+   `VS_CLIENT_CERT_HEADER=X-Forwarded-Tls-Client-Cert`. The middleware
+   replaces any client-supplied value of that header. The Helm chart does
+   this with `ingress.controller=traefik`.
+
    **Only trust the header if the proxy overwrites it on every request.**
    Otherwise a client can forge a certificate header. ingress-nginx does.
 

@@ -114,4 +114,15 @@ func TestClientCertHeader(t *testing.T) {
 	if got, err := ca.ClientCert(r, "X-Client-Cert"); err != nil || SerialHex(got) != SerialHex(cert) {
 		t.Errorf("base64 DER header: %v", err)
 	}
+	// Traefik: URL-escaped base64 DER without armor, intermediates after commas.
+	other, _, _ := ca.NewIdentity("intermediate-placeholder")
+	traefik := url.QueryEscape(base64.StdEncoding.EncodeToString(cert.Raw)) + "," + url.QueryEscape(base64.StdEncoding.EncodeToString(other.Raw))
+	r.Header.Set("X-Forwarded-Tls-Client-Cert", traefik)
+	if got, err := ca.ClientCert(r, "X-Forwarded-Tls-Client-Cert"); err != nil || SerialHex(got) != SerialHex(cert) {
+		t.Errorf("traefik header: %v", err)
+	}
+	r.Header.Set("X-Forwarded-Tls-Client-Cert", "not-a-cert")
+	if _, err := ca.ClientCert(r, "X-Forwarded-Tls-Client-Cert"); err == nil {
+		t.Error("garbage header accepted")
+	}
 }

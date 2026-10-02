@@ -261,28 +261,23 @@ func Fingerprint(cert *x509.Certificate) string {
 }
 
 // ClientCert extracts a verified client certificate from the request: either
-// from the TLS connection or, behind a TLS-terminating proxy, from header (a
-// URL-encoded PEM, as nginx's $ssl_client_escaped_cert produces). The header
-// must only be trusted when the proxy strips it from client requests.
+// from the TLS connection or, behind a TLS-terminating proxy, from header.
+// The header must only be trusted when the proxy overwrites it on every
+// request. Accepted header formats:
+//
+//   - nginx $ssl_client_escaped_cert: URL-encoded PEM
+//   - Caddy {http.request.tls.client.certificate_der_base64}: base64 DER
+//   - Traefik passTLSClientCert (pem: true): URL-encoded base64 DER without
+//     PEM armor, with intermediates appended after commas
 func (ca *CA) ClientCert(r *http.Request, header string) (*x509.Certificate, error) {
 	var cert *x509.Certificate
 	switch {
 	case r.TLS != nil && len(r.TLS.PeerCertificates) > 0:
 		cert = r.TLS.PeerCertificates[0]
 	case header != "" && r.Header.Get(header) != "":
-		raw, err := url.QueryUnescape(r.Header.Get(header))
+		der, err := decodeCertHeader(r.Header.Get(header))
 		if err != nil {
 			return nil, err
-		}
-		// URL-encoded PEM (nginx $ssl_client_escaped_cert) or base64 DER
-		// (Caddy {http.request.tls.client.certificate_der_base64}).
-		der := []byte(nil)
-		if block, _ := pem.Decode([]byte(raw)); block != nil {
-			der = block.Bytes
-		} else if b, err := base64.StdEncoding.DecodeString(strings.TrimSpace(r.Header.Get(header))); err == nil {
-			der = b
-		} else {
-			return nil, errors.New("client certificate header is neither PEM nor base64 DER")
 		}
 		cert, err = x509.ParseCertificate(der)
 		if err != nil {
@@ -295,6 +290,54 @@ func (ca *CA) ClientCert(r *http.Request, header string) (*x509.Certificate, err
 		return nil, fmt.Errorf("client certificate not trusted: %w", err)
 	}
 	return cert, nil
+}
+
+func decodeCertHeader(v string) ([]byte, error) {
+	v = strings.TrimSpace(v)
+	// Raw base64 first: URL unescaping would turn its '+' into spaces.
+	if b, err := base64.StdEncoding.DecodeString(v); err == nil {
+		return b, nil
+	}
+	unescaped, err := url.QueryUnescape(v)
+	if err != nil {
+		return nil, err
+	}
+	if block, _ := pem.Decode([]byte(unescaped)); block != nil {
+		return block.Bytes, nil
+	}
+	leaf, _, _ := strings.Cut(unescaped, ",")
+	if b, err := base64.StdEncoding.DecodeString(strings.TrimSpace(leaf)); err == nil {
+		return b, nil
+	}
+	return nil, errors.New("client certificate header is not PEM or base64 DER")
+}
+
+// certHeaderDER decodes the leaf certificate a TLS-terminating proxy forwards:
+//
+//   - nginx ($ssl_client_escaped_cert): URL-encoded PEM
+//   - Caddy ({http.request.tls.client.certificate_der_base64}): base64 DER
+//   - Traefik (passTLSClientCert pem): URL-encoded base64 DER without the PEM
+//     delimiters, with a chain joined by commas
+func certHeaderDER(v string) ([]byte, error) {
+	v = strings.TrimSpace(v)
+	if i := strings.IndexByte(v, ','); i >= 0 {
+		v = v[:i] // the leaf comes first
+	}
+	if raw, err := url.QueryUnescape(v); err == nil {
+		if block, _ := pem.Decode([]byte(raw)); block != nil {
+			return block.Bytes, nil
+		}
+	}
+	if b, err := base64.StdEncoding.DecodeString(v); err == nil {
+		return b, nil
+	}
+	// PathUnescape, unlike QueryUnescape, keeps '+' (a base64 character).
+	if raw, err := url.PathUnescape(v); err == nil {
+		if b, err := base64.StdEncoding.DecodeString(raw); err == nil {
+			return b, nil
+		}
+	}
+	return nil, errors.New("client certificate header is not PEM or base64 DER")
 }
 
 func randSerial() *big.Int {
