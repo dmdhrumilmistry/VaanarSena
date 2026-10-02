@@ -1,8 +1,20 @@
-# VaanarSena
+<p align="center">
+  <img src="internal/web/static/brand/emblem.svg" width="140" alt="Hanuman leaping with the Dronagiri mountain">
+</p>
+
+<h1 align="center">VaanarSena</h1>
+
+<p align="center">
+  <a href="https://dmdhrumilmistry.github.io/VaanarSena/"><b>Documentation</b></a> |
+  <a href="https://dmdhrumilmistry.github.io/VaanarSena/getting-started/">Getting started</a> |
+  <a href="https://github.com/dmdhrumilmistry/VaanarSena/releases/latest">Releases</a>
+</p>
 
 Open source, self-hosted device management (MDM) for enterprises that want
 complete control of their fleet. One Go binary, one PostgreSQL database,
 your own certificate authority. No SaaS, no telemetry, no licence server.
+
+![The VaanarSena console](docs/assets/screens/overview.png)
 
 VaanarSena manages **corporate-owned and personally owned (BYOD)** devices on
 **iOS, iPadOS, macOS, Windows, Android, ChromeOS and Linux** from one console

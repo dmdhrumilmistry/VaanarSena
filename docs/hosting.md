@@ -39,7 +39,7 @@ all devices, which is cheap up to tens of thousands of devices.
 
 ## Option 1: single VM with Caddy (recommended to start)
 
-[`deploy/caddy`](../deploy/caddy) runs Caddy, VaanarSena and PostgreSQL with
+[`deploy/caddy`](https://github.com/dmdhrumilmistry/VaanarSena/tree/main/deploy/caddy) runs Caddy, VaanarSena and PostgreSQL with
 Docker Compose. Caddy obtains and renews a Let's Encrypt certificate and
 forwards device client certificates, so every platform works with no extra
 configuration.

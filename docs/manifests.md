@@ -9,7 +9,7 @@ JSON **manifests** and deployed without the UI:
 
 All three use the same code path as the console, so a manifest and a click
 produce identical state. Working examples are in
-[`examples/manifests`](../examples/manifests); CI keeps them valid.
+[`examples/manifests`](https://github.com/dmdhrumilmistry/VaanarSena/tree/main/examples/manifests); CI keeps them valid.
 
 ## Resource format
 

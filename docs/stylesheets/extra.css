@@ -1,0 +1,49 @@
+/* VaanarSena docs: the console's palette (Dronagiri night, sindoor,
+   Sanjeevani green) and its display face for headings. */
+@font-face { font-family: "Rozha One"; font-display: swap; src: url(../assets/rozha-one-400.woff2) format("woff2"); }
+
+:root,
+[data-md-color-scheme="default"] {
+  --md-primary-fg-color: #1B1E3F;
+  --md-primary-fg-color--light: #252957;
+  --md-primary-fg-color--dark: #11132C;
+  --md-primary-bg-color: #FFFFFF;
+  --md-accent-fg-color: #E0561C;
+  --md-typeset-a-color: #C9480F;
+  --md-default-bg-color: #FFFFFF;
+}
+
+[data-md-color-scheme="slate"] {
+  --md-primary-fg-color: #0F1129;
+  --md-primary-fg-color--light: #1B1E44;
+  --md-primary-fg-color--dark: #0A0C20;
+  --md-accent-fg-color: #F06A30;
+  --md-typeset-a-color: #F3B489;
+  --md-default-bg-color: #14162F;
+  --md-default-bg-color--light: #1B1E3B;
+  --md-code-bg-color: #1B1E3B;
+}
+
+.md-header__title, .md-typeset h1, .md-typeset h2 {
+  font-family: "Rozha One", Georgia, serif;
+  font-weight: 400;
+  letter-spacing: 0.2px;
+}
+.md-typeset h1 { color: inherit; }
+.md-header__button.md-logo img { height: 2rem; }
+
+.md-typeset .md-button { border-radius: 8px; font-weight: 600; }
+.md-typeset .md-button--primary { background: #E0561C; border-color: #E0561C; color: #fff; }
+.md-typeset .md-button--primary:hover { background: #C9480F; border-color: #C9480F; color: #fff; }
+
+/* home page hero */
+.vs-hero { text-align: left; padding: 0.5rem 0 1rem; }
+.vs-hero .vs-hero-mark { width: 9rem; height: auto; float: right; margin: 0 0 1rem 1.5rem; }
+.vs-hero h1 { font-size: 2.6rem; margin-bottom: 0.4rem; }
+.vs-hero p { font-size: 1.05rem; max-width: 38rem; }
+@media (max-width: 600px) { .vs-hero .vs-hero-mark { float: none; display: block; width: 7rem; margin: 0 0 1rem; } }
+
+.md-typeset img.vs-shot, .md-typeset p > img[src*="screens/"] {
+  border: 1px solid var(--md-default-fg-color--lightest);
+  border-radius: 10px;
+}

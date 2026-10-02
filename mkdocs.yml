@@ -1,0 +1,80 @@
+site_name: VaanarSena
+site_description: Open source, self-hosted device management for iOS, macOS, Windows, Android, ChromeOS and Linux.
+site_url: https://dmdhrumilmistry.github.io/VaanarSena/
+repo_url: https://github.com/dmdhrumilmistry/VaanarSena
+repo_name: dmdhrumilmistry/VaanarSena
+edit_uri: edit/main/docs/
+copyright: Apache License 2.0. Fonts Rozha One and Hind by Indian Type Foundry (SIL OFL 1.1).
+
+theme:
+  name: material
+  logo: assets/emblem.svg
+  favicon: assets/favicon.svg
+  font:
+    text: Hind
+    code: JetBrains Mono
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+  features:
+    - navigation.sections
+    - navigation.top
+    - navigation.footer
+    - content.code.copy
+    - content.action.edit
+    - search.highlight
+    - search.suggest
+    - toc.follow
+
+extra_css:
+  - stylesheets/extra.css
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.superfences
+
+nav:
+  - Home: index.md
+  - Getting started: getting-started.md
+  - Run it:
+      - Hosting: hosting.md
+      - Deployment details: deployment.md
+      - Configuration: configuration.md
+  - Use it:
+      - The console: console.md
+      - Platform setup: platforms.md
+      - Manifests and GitOps: manifests.md
+  - Reference:
+      - REST API: api.md
+      - Security: security.md
+      - Architecture: ARCHITECTURE.md
+      - Testing: testing.md
+
+validation:
+  nav:
+    omitted_files: warn
+    not_found: warn
+  links:
+    not_found: warn
+    anchors: warn

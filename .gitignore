@@ -11,3 +11,4 @@ deploy/secrets/
 .idea/
 .vscode/
 .DS_Store
+/site/

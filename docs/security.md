@@ -72,4 +72,4 @@ the table. `run_script` records the full script body.
 
 ## Reporting vulnerabilities
 
-See [SECURITY.md](../SECURITY.md).
+See [SECURITY.md](https://github.com/dmdhrumilmistry/VaanarSena/blob/main/SECURITY.md).
