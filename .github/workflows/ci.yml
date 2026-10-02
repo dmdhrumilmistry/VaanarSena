@@ -23,7 +23,7 @@ jobs:
       - name: build
         run: make build agents cli
       - name: console syntax
-        run: node --check internal/web/static/app.js
+        run: for f in internal/web/static/js/*.js internal/web/static/js/views/*.js; do node --check "$f"; done
 
   e2e:
     runs-on: ubuntu-latest
