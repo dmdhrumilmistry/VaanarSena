@@ -5,10 +5,26 @@ import { h, icon } from "./core.js";
 let uid = 0;
 const nextId = () => "f" + ++uid;
 
+// field(label, control, help, { inline }): label, control, help text and an error slot.
+// The returned element has .setError(message) (pass "" or nothing to clear), which sets
+// .invalid, aria-invalid and aria-describedby on the control.
 export function field(label, control, help, opts = {}) {
   const id = control.id || (control.id = nextId());
-  return h("div", { class: "field" + (opts.inline ? " inline" : "") },
-    h("label", { for: id }, label), control, help ? h("div", { class: "help" }, help) : null);
+  const helpEl = help ? h("div", { class: "help", id: id + "-help" }, help) : null;
+  const errEl = h("div", { class: "field-error", id: id + "-err", role: "alert", hidden: true });
+  const el = h("div", { class: "field" + (opts.inline ? " inline" : "") },
+    h("label", { for: id }, label), control, helpEl, errEl);
+  const target = control.matches && control.matches("input,select,textarea") ? control : control.querySelector && control.querySelector("input,select,textarea");
+  const describe = (ids) => { if (target) { if (ids.length) target.setAttribute("aria-describedby", ids.join(" ")); else target.removeAttribute("aria-describedby"); } };
+  describe(helpEl ? [helpEl.id] : []);
+  el.setError = (msg) => {
+    errEl.textContent = msg || "";
+    errEl.hidden = !msg;
+    el.classList.toggle("invalid", !!msg);
+    if (target) { if (msg) target.setAttribute("aria-invalid", "true"); else target.removeAttribute("aria-invalid"); }
+    describe([helpEl && helpEl.id, msg ? errEl.id : null].filter(Boolean));
+  };
+  return el;
 }
 
 export function input(value = "", attrs = {}) {
@@ -28,7 +44,7 @@ export function select(options, value, attrs = {}) {
 }
 
 export function toggle(checked, label, onchange) {
-  const cb = h("input", { type: "checkbox", checked: !!checked, onchange: () => onchange && onchange(cb.checked) });
+  const cb = h("input", { type: "checkbox", role: "switch", checked: !!checked, onchange: () => onchange && onchange(cb.checked) });
   const el = h("label", { class: "switch" }, cb, h("span", { class: "track", "aria-hidden": "true" }), label ? h("span", {}, label) : null);
   el.get = () => cb.checked;
   el.set = (v) => { cb.checked = !!v; };
@@ -106,7 +122,7 @@ export function repeater(items, makeRow, { addLabel = "Add", newItem = () => ({}
     const rm = h("button", { type: "button", class: "iconbtn", "aria-label": "Remove", title: "Remove", onclick: () => {
       rows.splice(rows.indexOf(wrap), 1); wrap.remove(); refresh();
     } }, icon("trash"));
-    const wrap = h("div", { class: "item" }, h("div", { class: "row spread", style: { alignItems: "flex-start", flexWrap: "nowrap" } }, h("div", { style: { flex: "1", minWidth: "0" } }, row), rm));
+    const wrap = h("div", { class: "item" }, h("div", { class: "item-line" }, h("div", { class: "item-main" }, row), rm));
     wrap.get = row.get;
     rows.push(wrap);
     list.append(wrap);

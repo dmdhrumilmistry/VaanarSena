@@ -5,6 +5,11 @@ It works in light and dark themes and down to phone width. Everything it
 does goes through the same [REST API](api.md) that `vsctl` and your own
 automation use.
 
+Press **Ctrl K** (Cmd K on a Mac) anywhere to jump to a page or find a device
+by name, serial or user. The theme menu in the top bar switches between light,
+dark and your system setting. Editors with unsaved changes ask before you
+leave them, including with the browser's back button.
+
 ## Overview
 
 ![Overview](assets/screens/overview.png)

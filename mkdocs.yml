@@ -4,15 +4,15 @@ site_url: https://dmdhrumilmistry.github.io/VaanarSena/
 repo_url: https://github.com/dmdhrumilmistry/VaanarSena
 repo_name: dmdhrumilmistry/VaanarSena
 edit_uri: edit/main/docs/
-copyright: Apache License 2.0. Fonts Rozha One and Hind by Indian Type Foundry (SIL OFL 1.1).
+copyright: Apache License 2.0. IBM Plex fonts (SIL OFL 1.1).
 
 theme:
   name: material
-  logo: assets/emblem.svg
+  logo: assets/logo.svg
   favicon: assets/favicon.svg
   font:
-    text: Hind
-    code: JetBrains Mono
+    text: IBM Plex Sans
+    code: IBM Plex Mono
   palette:
     - media: "(prefers-color-scheme: light)"
       scheme: default

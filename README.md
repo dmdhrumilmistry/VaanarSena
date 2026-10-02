@@ -1,5 +1,8 @@
 <p align="center">
-  <img src="internal/web/static/brand/emblem.svg" width="140" alt="Hanuman leaping with the Dronagiri mountain">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/brand/lockup-dark.png">
+    <img src="docs/assets/brand/lockup-light.png" width="420" alt="VaanarSena: Hanuman leaping with the Dronagiri mountain raised in one hand">
+  </picture>
 </p>
 
 <h1 align="center">VaanarSena</h1>

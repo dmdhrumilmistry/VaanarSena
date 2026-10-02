@@ -40,7 +40,7 @@ function condRow(c, schema, onRemove) {
   const opSel = select(schema.ops.map((o) => [o, OP_LABELS[o] || o]), c.op || "eq", { "aria-label": "Operator" });
   const valueHost = h("div");
   let valueEl;
-  const rm = h("button", { type: "button", class: "iconbtn", "aria-label": "Remove condition", title: "Remove condition", onclick: onRemove }, icon("x"));
+  const rm = h("button", { type: "button", class: "iconbtn", "aria-label": "Remove condition", title: "Remove condition", onclick: onRemove }, icon("trash"));
   const initial = Array.isArray(c.value) ? c.value.join(", ") : c.value === undefined ? "" : String(c.value);
   const drawValue = (keep) => {
     const f = fieldSel.value, op = opSel.value;
@@ -60,7 +60,7 @@ function condRow(c, schema, onRemove) {
   opSel.addEventListener("change", () => drawValue());
   syncFact();
   drawValue(initial);
-  const el = h("div", { class: "stack" }, h("div", { class: "cond" }, fieldSel, opSel, valueHost, rm), factPath);
+  const el = h("div", { class: "rule-item cond-wrap" }, h("div", { class: "cond" }, fieldSel, opSel, valueHost, rm), factPath);
   el.get = () => {
     const field = fieldSel.value === FACT ? factPath.value.trim() : fieldSel.value;
     const out = { field, op: opSel.value };
@@ -73,7 +73,7 @@ function condRow(c, schema, onRemove) {
 
 function groupBox(rule, schema, depth, onRemove) {
   let match = rule.match || "all";
-  const items = h("div", { class: "stack" });
+  const items = h("div", { class: "rule-items" });
   const children = [];
   const addCond = (c) => {
     const row = condRow(c || {}, schema, () => { children.splice(children.indexOf(row), 1); row.remove(); });
@@ -83,20 +83,22 @@ function groupBox(rule, schema, depth, onRemove) {
     const box = groupBox(g || { match: "any", conditions: [{ field: "platform", op: "eq", value: "ios" }] }, schema, depth + 1, () => {
       children.splice(children.indexOf(box), 1); box.remove();
     });
-    box.isGroup = true;
+    box.isGroup = true; box.classList.add("rule-item");
     children.push(box); items.append(box);
   };
   (rule.conditions || []).forEach(addCond);
   (rule.rules || []).forEach(addGroup);
-  const matchSel = segmented([["all", "all"], ["any", "any"]], match, (v) => { match = v; });
+  const matchSel = segmented([["all", "All"], ["any", "Any"]], match, (v) => { match = v; el.dataset.match = v; });
+  matchSel.setAttribute("aria-label", "Match all or any");
   const el = h("div", { class: "rulegroup" },
     h("div", { class: "row spread" },
-      h("div", { class: "row" }, h("span", {}, depth === 0 ? "Devices that match" : "Match"), matchSel, h("span", {}, "of these")),
+      h("div", { class: "row rule-head" }, h("span", {}, depth === 0 ? "Devices match" : "Match"), matchSel, h("span", {}, "of these conditions")),
       onRemove ? h("button", { type: "button", class: "iconbtn", "aria-label": "Remove group", title: "Remove group", onclick: onRemove }, icon("trash")) : null),
     items,
     h("div", { class: "row" },
-      h("button", { type: "button", class: "btn small", onclick: () => addCond({ field: "platform", op: "eq" }) }, icon("plus"), "Condition"),
-      depth < 4 ? h("button", { type: "button", class: "btn small quiet", onclick: () => addGroup() }, icon("plus"), "Nested group") : null));
+      h("button", { type: "button", class: "btn small", onclick: () => addCond({ field: "platform", op: "eq" }) }, icon("plus"), "Add condition"),
+      depth < 4 ? h("button", { type: "button", class: "btn small ghost", onclick: () => addGroup() }, icon("plus"), "Add nested group") : null));
+  el.dataset.match = match;
   el.get = () => ({
     match,
     conditions: children.filter((c) => !c.isGroup).map((c) => c.get()),
@@ -130,7 +132,7 @@ export function ruleBuilder(rule, schema) {
       mode = v; host.hidden = v !== "visual"; jsonHost.hidden = v !== "json";
     } catch (e) { err.replaceChildren(h("div", { class: "notice bad" }, icon("alert"), e.message)); }
   });
-  const el = h("div", { class: "stack" }, h("div", { class: "row spread" }, h("span", { class: "muted small" }, "Rules are re-evaluated every minute, at enrollment, and when tags change."), sw), err, host, jsonHost);
+  const el = h("div", { class: "rule-builder" }, h("div", { class: "row spread" }, h("span", { class: "help" }, "Rules are re-evaluated every minute, at enrollment, and when tags change."), sw), err, host, jsonHost);
   el.get = () => (mode === "json" ? json.get() : clean(tree.get()));
   return el;
 }

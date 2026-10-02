@@ -1,0 +1,144 @@
+/* VaanarSena design tokens. Light is the default; dark applies for
+   data-theme="dark", or for the system preference when no theme is chosen. */
+
+@font-face { font-family: "IBM Plex Sans"; font-weight: 400; font-style: normal; font-display: swap; src: url(/fonts/ibm-plex-sans-400.woff2) format("woff2"); }
+@font-face { font-family: "IBM Plex Sans"; font-weight: 500; font-style: normal; font-display: swap; src: url(/fonts/ibm-plex-sans-500.woff2) format("woff2"); }
+@font-face { font-family: "IBM Plex Sans"; font-weight: 600; font-style: normal; font-display: swap; src: url(/fonts/ibm-plex-sans-600.woff2) format("woff2"); }
+@font-face { font-family: "IBM Plex Mono"; font-weight: 400; font-style: normal; font-display: swap; src: url(/fonts/ibm-plex-mono-400.woff2) format("woff2"); }
+@font-face { font-family: "IBM Plex Mono"; font-weight: 500; font-style: normal; font-display: swap; src: url(/fonts/ibm-plex-mono-500.woff2) format("woff2"); }
+
+:root {
+  --bg: #F7F1EA;
+  --surface: #FFFDFA;
+  --surface-2: #FBF7F2;
+  --surface-hover: #F3ECE3;
+  --line: #EADFD2;
+  --line-strong: #DCCDBD;
+  --text: #24150B;
+  --text-2: #4A372A;
+  --muted: #75604F;
+  --faint: #A8978A;
+  /* Borders of inputs and switches: 3:1 against the surface. */
+  --control: #96826F;
+
+  /* Brand: the saffron of the emblem, deepened for text on parchment. */
+  --brand: #E07B24;
+  --brand-hover: #B85A12;
+  --brand-soft: #FCEEDF;
+  --brand-text: #A84B0A;
+  --ring: #F6D5B5;
+  --focus: #A84B0A;
+  /* Solid brand fills and the text that sits on them (AA contrast). */
+  --brand-solid: #A84B0A;
+  --brand-solid-hover: #8A3C07;
+  --on-brand: #FFFFFF;
+
+  --ok: #17B26A;   --ok-soft: #ECFDF3;   --ok-text: #067647;
+  --warn: #F79009; --warn-soft: #FFFAEB; --warn-text: #B54708;
+  --bad: #D92D20;  --bad-soft: #FEF3F2;  --bad-text: #B42318;
+  --info: #2E90FA; --info-soft: #EFF8FF; --info-text: #175CD3;
+  --personal: #7A5AF8; --personal-soft: #F4F3FF; --personal-text: #5925DC;
+  --bad-solid: #D92D20;
+  --bad-solid-hover: #B42318;
+
+  --sidebar-bg: #FBF6F0;
+  --track: #EFE6DB;
+  --scrim: rgba(36, 21, 11, 0.45);
+  --toast-bg: #24150B;
+  --toast-text: #FBF7F2;
+
+  --radius-sm: 6px;
+  --radius: 8px;
+  --radius-lg: 12px;
+  --shadow-overlay: 0 12px 32px -8px rgba(16, 24, 40, 0.18), 0 4px 8px -4px rgba(16, 24, 40, 0.08);
+
+  --font: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "Cascadia Code", Consolas, monospace;
+  --sidebar: 248px;
+  --topbar: 60px;
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  --bg: #121214;
+  --surface: #1A1A1D;
+  --surface-2: #161618;
+  --surface-hover: #232327;
+  --line: #2A2A2F;
+  --line-strong: #36363C;
+  --text: #F5EFE8;
+  --text-2: #D2C9BF;
+  --muted: #9C938A;
+  --faint: #6E6760;
+  --control: #7A726A;
+
+  /* Brand: the emblem's orange on charcoal. Filled buttons carry dark text. */
+  --brand: #F2922F;
+  --brand-hover: #F6A855;
+  --brand-soft: #2D1F12;
+  --brand-text: #F5A24A;
+  --ring: rgba(242, 146, 47, 0.32);
+  --focus: #F5A24A;
+  --brand-solid: #F2922F;
+  --brand-solid-hover: #F6A855;
+  --on-brand: #1A0F05;
+
+  --ok: #47CD89;   --ok-soft: #102A1D;   --ok-text: #75E0A7;
+  --warn: #FDB022; --warn-soft: #33250C; --warn-text: #FEC84B;
+  --bad: #F97066;  --bad-soft: #3A1717; --bad-text: #FDA29B;
+  --info: #53B1FD; --info-soft: #13253A; --info-text: #84CAFF;
+  --personal: #9B8AFB; --personal-soft: #221D38; --personal-text: #BDB4FE;
+  --bad-solid: #D92D20;
+  --bad-solid-hover: #B42318;
+
+  --sidebar-bg: #161618;
+  --track: #26262A;
+  --scrim: rgba(0, 0, 0, 0.65);
+  --toast-bg: #2A2A2F;
+  --toast-text: #F5EFE8;
+  --shadow-overlay: 0 16px 40px -8px rgba(0, 0, 0, 0.6), 0 4px 8px -4px rgba(0, 0, 0, 0.4);
+  color-scheme: dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #121214;
+    --surface: #1A1A1D;
+    --surface-2: #161618;
+    --surface-hover: #232327;
+    --line: #2A2A2F;
+    --line-strong: #36363C;
+    --text: #F5EFE8;
+    --text-2: #D2C9BF;
+    --muted: #9C938A;
+    --faint: #6E6760;
+    --control: #7A726A;
+
+    /* Brand: the emblem's orange on charcoal. Filled buttons carry dark text. */
+    --brand: #F2922F;
+    --brand-hover: #F6A855;
+    --brand-soft: #2D1F12;
+    --brand-text: #F5A24A;
+    --ring: rgba(242, 146, 47, 0.32);
+    --focus: #F5A24A;
+    --brand-solid: #F2922F;
+    --brand-solid-hover: #F6A855;
+    --on-brand: #1A0F05;
+
+    --ok: #47CD89;   --ok-soft: #102A1D;   --ok-text: #75E0A7;
+    --warn: #FDB022; --warn-soft: #33250C; --warn-text: #FEC84B;
+    --bad: #F97066;  --bad-soft: #3A1717; --bad-text: #FDA29B;
+    --info: #53B1FD; --info-soft: #13253A; --info-text: #84CAFF;
+    --personal: #9B8AFB; --personal-soft: #221D38; --personal-text: #BDB4FE;
+    --bad-solid: #D92D20;
+    --bad-solid-hover: #B42318;
+
+    --sidebar-bg: #161618;
+    --track: #26262A;
+    --scrim: rgba(0, 0, 0, 0.65);
+    --toast-bg: #2A2A2F;
+    --toast-text: #F5EFE8;
+    --shadow-overlay: 0 16px 40px -8px rgba(0, 0, 0, 0.6), 0 4px 8px -4px rgba(0, 0, 0, 0.4);
+    color-scheme: dark;
+  }
+}

@@ -6,7 +6,8 @@ hide:
 
 <div class="vs-hero" markdown>
 
-![](assets/emblem.svg){ .vs-hero-mark }
+![VaanarSena emblem](assets/brand/lockup-light.png#only-light){ .vs-hero-mark }
+![VaanarSena emblem](assets/brand/lockup-dark.png#only-dark){ .vs-hero-mark }
 
 # VaanarSena
 
