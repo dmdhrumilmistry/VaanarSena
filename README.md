@@ -57,6 +57,12 @@ and one REST API.
   manifests: `vsctl apply`/`diff`/`export`, `POST /api/v1/apply`, or a GitOps
   directory the server reconciles itself. Validated as a whole, idempotent,
   with owner-scoped prune.
+- **Conditional access.** Signed webhooks tell your identity provider, VPN or
+  SIEM the moment a device stops being compliant, is retired or changes hands.
+  See [docs/webhooks.md](docs/webhooks.md).
+- **Single sign-on.** Sign in to the console with any OpenID Connect provider
+  (Entra ID, Okta, Google, Keycloak...), with roles from directory groups.
+  See [docs/sso.md](docs/sso.md).
 - **Auditable.** Every admin action lands in an append-only audit log that the
   database itself refuses to modify.
 
@@ -142,6 +148,8 @@ sudo systemctl enable --now vaanarsena-agent
 - [Platforms](docs/platforms.md): Apple, Windows, Android, ChromeOS and Linux setup
 - [Deployment](docs/deployment.md): Docker, Kubernetes, TLS and client certificates
 - [Security](docs/security.md): threat model, BYOD guarantees, hardening
+- [Single sign-on](docs/sso.md): OpenID Connect for the console
+- [Webhooks](docs/webhooks.md): device events for conditional access, signature verification
 - [API](docs/api.md): REST reference
 
 ## Building

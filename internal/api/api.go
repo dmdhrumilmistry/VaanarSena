@@ -14,6 +14,7 @@ import (
 	"github.com/dmdhrumilmistry/VaanarSena/internal/mdm"
 	"github.com/dmdhrumilmistry/VaanarSena/internal/pki"
 	"github.com/dmdhrumilmistry/VaanarSena/internal/platforms"
+	"github.com/dmdhrumilmistry/VaanarSena/internal/secrets"
 	"github.com/dmdhrumilmistry/VaanarSena/internal/store"
 )
 
@@ -26,8 +27,12 @@ type API struct {
 	PublicURL string
 	Org       string
 	Platforms *platforms.Manager
-	Version   string
-	Log       *slog.Logger
+	// Box encrypts webhook signing secrets at rest.
+	Box *secrets.Box
+	// OIDC enables single sign-on; nil when it is not configured.
+	OIDC    *auth.OIDC
+	Version string
+	Log     *slog.Logger
 }
 
 // Routes registers the API on mux.
@@ -38,6 +43,7 @@ func (a *API) Routes(mux *http.ServeMux) {
 
 	mux.HandleFunc("POST /api/v1/auth/login", a.login)
 	mux.HandleFunc("POST /api/v1/auth/logout", a.logout)
+	a.ssoRoutes(mux)
 	mux.Handle("GET /api/v1/auth/me", auditor(a.me))
 	mux.Handle("POST /api/v1/auth/password", auditor(a.changePassword))
 
@@ -102,6 +108,7 @@ func (a *API) Routes(mux *http.ServeMux) {
 	mux.Handle("GET /api/v1/audit", auditor(a.listAudit))
 
 	a.platformRoutes(mux)
+	a.webhookRoutes(mux, admin)
 
 	mux.HandleFunc("GET /mdm/ca.pem", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/x-pem-file")
@@ -120,6 +127,8 @@ func (a *API) fail(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, store.ErrNotFound):
 		httpx.Error(w, http.StatusNotFound, "not found")
+	case errors.Is(err, store.ErrOwnershipChanged):
+		httpx.Error(w, http.StatusConflict, err.Error())
 	case errors.Is(err, mdm.ErrForbidden):
 		httpx.Error(w, http.StatusForbidden, err.Error())
 	default:
@@ -155,7 +164,7 @@ func queryInt(r *http.Request, key string, def int) int {
 
 func (a *API) info(w http.ResponseWriter, r *http.Request) {
 	platforms := map[string]bool{}
-	for _, p := range []string{store.PlatformIOS, store.PlatformWindows, store.PlatformAndroid, store.PlatformChromeOS, store.PlatformLinux} {
+	for _, p := range []string{store.PlatformIOS, store.PlatformIPadOS, store.PlatformMacOS, store.PlatformWindows, store.PlatformAndroid, store.PlatformChromeOS, store.PlatformLinux} {
 		platforms[p] = a.Svc.Enabled(p)
 	}
 	httpx.JSON(w, http.StatusOK, map[string]any{

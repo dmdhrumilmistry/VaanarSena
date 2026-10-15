@@ -1,6 +1,7 @@
 import { h, api, state, link, table, platformTag, ownershipTag, complianceTag, statusTag, ago, fmtTime,
-  can, emptyState, go, toast, confirmDialog, notice, tabs, tabBar, icon, groupsCache, copyButton, menu, chip, badge, PLATFORM, platformLabel, panel, body } from "../core.js";
-import { select, tagsInput, field } from "../forms.js";
+  can, emptyState, go, toast, confirmDialog, notice, tabs, tabBar, icon, groupsCache, copyButton, menu, chip, badge, PLATFORM, platformLabel, panel, body,
+  drawer, withBusy, errorNotice } from "../core.js";
+import { select, tagsInput, field, input, segmented } from "../forms.js";
 import { deviceSoftware } from "./software.js";
 import { paramsForm, allowedCommands, commandLabel, commandDrawer, quickSend, INSTANT_TYPES, deliveryNote } from "../commands.js";
 
@@ -38,6 +39,7 @@ export function rowActions(d) {
     allowed.length ? { label: "Send command...", icon: "send", onClick: () => commandDrawer(d, allowed) } : null,
     refresh ? { label: "Refresh inventory", icon: "refresh", onClick: () => quickSend(d, refresh) } : null,
     { separator: true },
+    can("operator") ? { label: "Edit details", icon: "edit", onClick: () => editDrawer(d) } : null,
     { label: "Copy device ID", icon: "copy", onClick: () => copyText(d.id) },
   ]);
   return btn;
@@ -274,6 +276,45 @@ async function bulkTag(devs) {
   go(location.pathname + location.search + (location.search ? "&" : "?") + "_=" + Date.now());
 }
 
+// editDrawer(d): name and user for operators; ownership for admins, because
+// reclassifying a device changes what may be done to it.
+function editDrawer(d) {
+  const name = input(d.name, { placeholder: "Device name" });
+  const assignee = input(d.assignee, { type: "email", placeholder: "person@example.com" });
+  let ownership = d.ownership;
+  const warn = notice("warn", d.ownership === "personal"
+    ? "Company-owned devices can be erased, locked and inventoried in full. Only reclassify a device the organization owns."
+    : "Personal devices lose device-wide control: their software inventory is deleted and erase, lock and scripts are refused.");
+  warn.hidden = true;
+  const own = segmented([["corporate", "Company-owned"], ["personal", "Personal (BYOD)"]], d.ownership,
+    (v) => { ownership = v; warn.hidden = v === d.ownership; });
+  const out = h("div");
+  const save = h("button", { class: "btn primary", type: "button" }, "Save changes");
+  const cancel = h("button", { class: "btn", type: "button" }, "Cancel");
+  const form = h("div", { class: "form" },
+    field("Name", name, "Shown in the console. The device may report its own name again at check-in."),
+    field("User", assignee, "Used in smart group rules and webhook events."),
+    can("admin") ? field("Ownership", own, "Smart groups and the policy are re-evaluated right away.") : null,
+    can("admin") ? warn : null, out);
+  const dr = drawer({ title: "Edit device", sub: deviceName(d), body: form, footer: [cancel, save] });
+  cancel.addEventListener("click", () => dr.close());
+  save.addEventListener("click", () => withBusy(save, async () => {
+    const patch = {};
+    if (name.get() !== d.name) patch.name = name.get();
+    if (assignee.get() !== d.assignee) patch.assignee = assignee.get();
+    if (can("admin") && ownership !== d.ownership) patch.ownership = ownership;
+    if (!Object.keys(patch).length) { dr.close(); return; }
+    try {
+      await api("PATCH", "/devices/" + d.id, patch);
+      toast("Device updated");
+      dr.close();
+      const q = new URLSearchParams(location.search);
+      q.set("_", Date.now());
+      go(location.pathname + "?" + q);
+    } catch (e) { out.replaceChildren(errorNotice(e)); }
+  }));
+}
+
 // ---------- device page ----------
 const cmdBadge = (s) => {
   const map = { acknowledged: ["ok", "Done"], error: ["bad", "Failed"], sent: ["warn", "Sent"], not_now: ["warn", "Deferred"], queued: ["", "Queued"], cancelled: ["", "Cancelled"] };
@@ -302,6 +343,7 @@ export async function detail(id) {
     allowed.length ? { label: "Send command...", icon: "send", onClick: () => commandDrawer(d, allowed) } : null,
     ...allowed.filter((c) => !quick.includes(c)).map((c) => ({ label: commandLabel(c.type), danger: !!c.destructive, onClick: () => commandDrawer(d, allowed, { preset: c.type }) })),
     allowed.length ? { separator: true } : null,
+    can("operator") ? { label: "Edit details", icon: "edit", onClick: () => editDrawer(d) } : null,
     { label: "Copy device ID", icon: "copy", onClick: () => copyText(d.id) },
     can("admin") ? { separator: true } : null,
     can("admin") ? { label: "Delete record", icon: "trash", danger: true, onClick: () => removeRecord(d) } : null,

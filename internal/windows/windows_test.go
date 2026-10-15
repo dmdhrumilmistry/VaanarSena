@@ -79,3 +79,22 @@ func TestEnrollURL(t *testing.T) {
 		t.Errorf("url = %s", u)
 	}
 }
+
+func TestComplianceFollowsPolicy(t *testing.T) {
+	unencrypted := map[string]any{encryptionComplianceNode: "0"}
+	// No encryption requirement: an unencrypted PC is compliant.
+	if c := evaluateCompliance(&policy.Document{}, unencrypted); c == nil || !c.Compliant {
+		t.Fatalf("no requirement: %+v", c)
+	}
+	req := &policy.Document{Encryption: &policy.Encryption{Required: true}}
+	if c := evaluateCompliance(req, unencrypted); c == nil || c.Compliant || len(c.Issues) != 1 {
+		t.Fatalf("required and unencrypted: %+v", c)
+	}
+	if c := evaluateCompliance(req, map[string]any{encryptionComplianceNode: "1"}); c == nil || !c.Compliant {
+		t.Fatalf("required and encrypted: %+v", c)
+	}
+	// A build that does not report the node leaves the state unknown.
+	if c := evaluateCompliance(req, map[string]any{}); c != nil {
+		t.Fatalf("missing node evaluated: %+v", c)
+	}
+}

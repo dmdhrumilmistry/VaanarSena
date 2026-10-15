@@ -28,6 +28,7 @@ import (
 	"github.com/dmdhrumilmistry/VaanarSena/internal/secrets"
 	"github.com/dmdhrumilmistry/VaanarSena/internal/store"
 	"github.com/dmdhrumilmistry/VaanarSena/internal/web"
+	"github.com/dmdhrumilmistry/VaanarSena/internal/webhook"
 	"github.com/dmdhrumilmistry/VaanarSena/internal/windows"
 )
 
@@ -216,7 +217,19 @@ func serve() error {
 	mux := http.NewServeMux()
 	secure := strings.HasPrefix(cfg.PublicURL, "https://")
 	authn := auth.New(st, box, cfg.SessionTTL, secure)
-	apiSrv := &api.API{Store: st, Auth: authn, Svc: svc, CA: ca, PublicURL: cfg.PublicURL, Org: cfg.OrgName, Version: version, Log: log}
+	apiSrv := &api.API{Store: st, Auth: authn, Svc: svc, CA: ca, PublicURL: cfg.PublicURL, Org: cfg.OrgName, Box: box, Version: version, Log: log}
+	if cfg.OIDCIssuer != "" {
+		apiSrv.OIDC, err = auth.NewOIDC(auth.OIDCConfig{
+			Issuer: cfg.OIDCIssuer, ClientID: cfg.OIDCClientID, ClientSecret: cfg.OIDCClientSecret,
+			RedirectURL: cfg.PublicURL + "/api/v1/auth/oidc/callback", Scopes: cfg.OIDCScopes, Name: cfg.OIDCName,
+			GroupsClaim: cfg.OIDCGroupsClaim, RoleGroups: cfg.OIDCRoleGroups, AllowedDomains: cfg.OIDCAllowedDomains,
+			TrustUnverifiedEmail: cfg.OIDCTrustUnverifiedEmail,
+		}, box, secure)
+		if err != nil {
+			return err
+		}
+		log.Info("single sign-on enabled", "issuer", cfg.OIDCIssuer, "rolesFromGroups", apiSrv.OIDC.Config.MapsRoles())
+	}
 
 	win := &windows.Driver{Store: st, Svc: svc, CA: ca, Org: cfg.OrgName, PublicURL: cfg.PublicURL, CertHeader: cfg.ClientCertHeader, Log: log}
 	svc.Register(win)
@@ -253,6 +266,7 @@ func serve() error {
 
 	go housekeeping(ctx, st, log)
 	go svc.RunGroupReconciler(ctx, time.Minute)
+	go (&webhook.Dispatcher{Store: st, Box: box, Log: log}).Run(ctx, 5*time.Second)
 	if dir := os.Getenv("VS_MANIFEST_DIR"); dir != "" {
 		every, err := time.ParseDuration(envOr("VS_MANIFEST_INTERVAL", "5m"))
 		if err != nil {

@@ -28,10 +28,14 @@ export function paramsForm(type, platform, initial = {}) {
   const add = (key, label, ctrl, help) => { f.push([key, ctrl]); return field(label, ctrl, help); };
   const parts = [];
   const mac = platform === "macos" || platform === undefined;
+  // Only Apple shows a message and phone number on the lock screen.
+  const apple = platform === undefined || ["ios", "ipados", "macos"].includes(platform);
   switch (type) {
     case "lock":
-      parts.push(add("message", "Message on the lock screen", input(initial.message, { placeholder: "This device is locked by IT" })));
-      parts.push(add("phone", "Phone number to show", input(initial.phone, { placeholder: "+91 ..." })));
+      if (apple) {
+        parts.push(add("message", "Message on the lock screen", input(initial.message, { placeholder: "This device is locked by IT" })));
+        parts.push(add("phone", "Phone number to show", input(initial.phone, { placeholder: "+91 ..." })));
+      }
       if (mac) parts.push(add("pin", "Six-digit PIN (macOS)", input(initial.pin, { inputmode: "numeric", maxlength: 6, class: "short" }), "Needed to unlock a Mac locked this way."));
       break;
     case "enable_lost_mode":
@@ -54,8 +58,8 @@ export function paramsForm(type, platform, initial = {}) {
       break;
     case "wipe":
       if (mac) parts.push(add("pin", "Six-digit PIN (macOS)", input(initial.pin, { inputmode: "numeric", maxlength: 6, class: "short" }), "Needed to unlock a Mac erased this way."));
-      if (platform === "ios" || platform === undefined) {
-        const keep = check(initial.preserveDataPlan, "Keep the cellular data plan (iOS)");
+      if (platform === "ios" || platform === "ipados" || platform === undefined) {
+        const keep = check(initial.preserveDataPlan, "Keep the cellular data plan (iPhone and cellular iPad)");
         f.push(["preserveDataPlan", keep]); parts.push(keep);
       }
       break;

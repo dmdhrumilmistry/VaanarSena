@@ -117,11 +117,13 @@ const check = (cond, msg) => { if (!cond) fails.push(msg); console.log((cond ? "
   await p.getByRole("button", { name: "Send command" }).first().click();
   await p.locator("dialog.drawer select[aria-label=Command]").waitFor();
   await p.locator("select[aria-label=Command]").selectOption("lock");
-  await p.locator("input[placeholder='This device is locked by IT']").fill("Locked by test");
+  // Only Apple shows a lock-screen message, so a Linux device is not offered one.
+  check(corp.platform !== "linux" || await p.locator("dialog.drawer input[placeholder='This device is locked by IT']").count() === 0, "lock message field hidden on Linux");
+  const locks = async () => (await api("/devices/" + corp.id + "/commands?limit=500")).commands.filter((c) => c.type === "lock").length;
+  const locksBefore = await locks();
   await p.locator("dialog.drawer").getByRole("button", { name: "Send command" }).click();
   await p.waitForSelector("text=Lock queued").catch(() => {});
-  const cmds = await api("/devices/" + corp.id + "/commands");
-  check(cmds.commands.some((c) => c.type === "lock" && c.params.message === "Locked by test"), "lock command queued with message");
+  check(await locks() === locksBefore + 1, "lock command queued");
   await p.goto(BASE + "/devices/" + pers.id + "?tab=commands");
   await p.getByRole("button", { name: "Send command" }).first().click();
   await p.locator("dialog.drawer select[aria-label=Command]").waitFor();
@@ -177,6 +179,49 @@ const check = (cond, msg) => { if (!cond) fails.push(msg); console.log((cond ? "
     await p.waitForSelector("text=personally owned");
     check((await p.locator(".tabbody").innerText()).includes("personally owned"), "personal device software tab shows the server note");
   }
+
+  // 8. Webhooks: add one, see the secret once, send a test, read the deliveries
+  await p.goto(BASE + "/settings/webhooks");
+  // In the panel header once webhooks exist, in the empty state before.
+  await p.locator("main").getByRole("button", { name: "Add webhook" }).first().click();
+  const wd = p.locator("dialog.drawer");
+  await wd.locator("input[type=url]").fill("https://hooks.example.invalid/vs-" + stamp);
+  await wd.locator(".field", { hasText: "Name" }).locator("input").fill("ui-hook-" + stamp);
+  await wd.locator("label.check", { hasText: "Retired" }).locator("input").check();
+  await wd.getByRole("button", { name: "Add webhook" }).click();
+  await wd.locator(".token-new code").waitFor();
+  check((await wd.locator(".token-new code").innerText()).startsWith("whsec_"), "webhook signing secret shown once");
+  await wd.getByRole("button", { name: "Done" }).click();
+  await p.waitForSelector("text=ui-hook-" + stamp);
+  const hook = (await api("/webhooks")).webhooks.find((w) => w.name === "ui-hook-" + stamp);
+  check(hook && hook.enabled && hook.events.includes("device.compliance_changed") && hook.events.includes("device.retired"), "webhook saved with its events");
+  if (hook) {
+    await p.getByRole("button", { name: "Actions for ui-hook-" + stamp }).click();
+    await p.getByRole("menuitem", { name: "Send test event" }).click();
+    await p.waitForSelector("text=Test event queued");
+    await p.locator("tr", { hasText: "ui-hook-" + stamp }).locator(".primary-cell").click();
+    await p.locator("dialog.drawer .wh-dl", { hasText: "Test" }).first().waitFor({ timeout: 8000 }).catch(() => {});
+    check(await p.locator("dialog.drawer .wh-dl", { hasText: "Test" }).count() > 0, "test delivery listed");
+    await p.keyboard.press("Escape");
+    await api("/webhooks/" + hook.id, { method: "DELETE" }).catch(() => {});
+  }
+
+  // 9. Edit a device's name from its page
+  await p.goto(BASE + "/devices/" + corp.id);
+  await p.getByRole("button", { name: "More actions" }).click();
+  await p.getByRole("menuitem", { name: "Edit details" }).click();
+  await p.locator("dialog.drawer .field", { hasText: "Name" }).locator("input").fill("eng-ws-12-renamed");
+  await p.locator("dialog.drawer").getByRole("button", { name: "Save changes" }).click();
+  await p.waitForSelector("h1:has-text('eng-ws-12-renamed')").catch(() => {});
+  const renamed = (await api("/devices/" + corp.id)).device;
+  check(renamed.name === "eng-ws-12-renamed", "device renamed from its page");
+  await api("/devices/" + corp.id, { method: "PATCH", body: JSON.stringify({ name: "eng-ws-12" }) });
+
+  // 10. Single sign-on errors are explained on the sign-in page
+  const anon = await (await b.newContext({ ignoreHTTPSErrors: true })).newPage();
+  await anon.goto(BASE + "/login?sso_error=no_access");
+  await anon.waitForSelector("#login-email");
+  check((await anon.locator(".login [role=alert]").innerText()).includes("not in a group"), "SSO error explained on the sign-in page");
 
   check(errors.length === 0, "no page errors" + (errors.length ? ": " + errors.join(" | ") : ""));
   await b.close();

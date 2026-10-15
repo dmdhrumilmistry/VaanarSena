@@ -112,3 +112,8 @@ dialog.palette[open] { display: flex; flex-direction: column; }
   .userbtn { padding: 0 4px; }
   .userbtn .chev { display: none; }
 }
+
+/* Single sign-on on the sign-in page. */
+.login .sso { display: flex; flex-direction: column; gap: 16px; }
+.login .sso:empty { display: none; }
+.login .sso-btn { height: 44px; justify-content: center; font-weight: 600; font-size: 15px; }

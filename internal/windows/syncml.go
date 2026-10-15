@@ -290,9 +290,12 @@ func (d *Driver) afterAck(ctx context.Context, dev *store.Device, c *store.Comma
 		p.Name = str("./DevDetail/Ext/Microsoft/DeviceName")
 		p.Serial = str("./DevDetail/Ext/Microsoft/SMBIOSSerialNumber")
 		p.Model = str("./DevInfo/Mod")
-		if enc, ok := results["./Device/Vendor/MSFT/DeviceStatus/Compliance/EncryptionCompliance"].(string); ok {
-			compliant := enc == "1"
-			p.Compliant = &compliant
+		doc, err := mdm.EffectivePolicy(ctx, d.Store, dev.ID)
+		if err != nil {
+			d.Log.Warn("effective policy", "device", dev.ID, "err", err)
+		} else if c := evaluateCompliance(doc, results); c != nil {
+			p.Compliant = &c.Compliant
+			p.Facts["compliance"] = c
 		}
 		_, _ = d.Store.PatchDevice(ctx, dev.ID, p)
 		if !dev.IsPersonal() {
@@ -308,6 +311,35 @@ func (d *Driver) afterAck(ctx context.Context, dev *store.Device, c *store.Comma
 		_, _ = d.Store.PatchDevice(ctx, dev.ID, store.DevicePatch{Status: &st})
 		_ = d.Store.CancelPendingCommands(ctx, dev.ID)
 	}
+}
+
+// Compliance is the server's evaluation of a Windows device against its
+// effective policy, stored in facts.compliance like the Linux agent's.
+type Compliance struct {
+	Compliant bool     `json:"compliant"`
+	Issues    []string `json:"issues,omitempty"`
+}
+
+const encryptionComplianceNode = "./Device/Vendor/MSFT/DeviceStatus/Compliance/EncryptionCompliance"
+
+// evaluateCompliance checks the refresh results against what the policy
+// requires. Only requirements the device reports on are evaluated: an
+// unencrypted PC whose policy does not ask for encryption is compliant. It
+// returns nil when a requirement cannot be evaluated (the node is missing),
+// leaving the stored state unchanged.
+func evaluateCompliance(doc *policy.Document, results map[string]any) *Compliance {
+	c := &Compliance{Compliant: true}
+	if doc != nil && doc.Encryption != nil && doc.Encryption.Required {
+		enc, ok := results[encryptionComplianceNode].(string)
+		if !ok {
+			return nil
+		}
+		if enc != "1" {
+			c.Compliant = false
+			c.Issues = append(c.Issues, "disk encryption required but BitLocker reports the device is not encrypted")
+		}
+	}
+	return c
 }
 
 // readsOptionalNodes reports whether a command only reads nodes that may be

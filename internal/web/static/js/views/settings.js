@@ -1,5 +1,6 @@
 import { h, api, state, page, fmtTime, toast, confirmDialog, errorNotice, notice, icon, copyLine, go, badge, withBusy, tabBar, skeleton } from "../core.js";
 import { input, field, filePicker, fileToText, fileToBase64, textarea } from "../forms.js";
+import { webhooksTab } from "./webhooks.js";
 
 const sourceNote = (st) => st.source === "environment"
   ? notice("gold", "Set by environment variables on the server. Change it there, or remove them to manage it here.") : null;
@@ -179,11 +180,14 @@ async function serverTab() {
       h("dt", {}, "Documentation"), h("dd", {}, h("a", { class: "link", href: "https://dmdhrumilmistry.github.io/VaanarSena/", target: "_blank", rel: "noopener" }, "dmdhrumilmistry.github.io/VaanarSena")))));
 }
 
+const TABS = { platforms: platformsTab, webhooks: webhooksTab, server: serverTab };
+
 export async function view(tab) {
-  const current = tab === "server" ? "server" : "platforms";
-  const bar = tabBar({ label: "Settings sections", value: current, items: [{ id: "platforms", label: "Platforms" }, { id: "server", label: "Server" }],
+  const current = TABS[tab] ? tab : "platforms";
+  const bar = tabBar({ label: "Settings sections", value: current,
+    items: [{ id: "platforms", label: "Platforms" }, { id: "webhooks", label: "Webhooks" }, { id: "server", label: "Server" }],
     onChange: (id) => go("/settings/" + id) });
   const host = h("div", { class: "tabbody", role: "tabpanel", "aria-labelledby": bar.id + "-" + current }, skeleton(4));
-  (current === "server" ? serverTab() : platformsTab()).then((el) => host.replaceChildren(el), (e) => host.replaceChildren(errorNotice(e)));
-  return page({ title: "Settings", sub: "Platform connections and server details. Credentials are stored encrypted with the server key." }, bar, host);
+  TABS[current]().then((el) => host.replaceChildren(el), (e) => host.replaceChildren(errorNotice(e)));
+  return page({ title: "Settings", sub: "Platform connections, webhooks and server details. Credentials and secrets are stored encrypted with the server key." }, bar, host);
 }

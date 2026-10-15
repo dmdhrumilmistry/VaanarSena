@@ -66,6 +66,50 @@ func TestRetiredDevicesRefuseCommands(t *testing.T) {
 	}
 }
 
+func TestAppParamsPerPlatform(t *testing.T) {
+	corp := func(p string) *store.Device { return dev(p, store.OwnershipCorporate) }
+	urlOnly := Params{URL: "https://apps.example.com/x"}
+	cases := []struct {
+		platform, typ string
+		p             Params
+		ok            bool
+	}{
+		// A manifest URL is how Apple installs in-house apps.
+		{store.PlatformIOS, InstallApp, urlOnly, true},
+		// Removal is by bundle ID; an empty identifier must not be sent.
+		{store.PlatformIOS, RemoveApp, urlOnly, false},
+		{store.PlatformMacOS, RemoveApp, Params{AppID: "com.example.app"}, true},
+		// Windows MSI install needs the product code, URL, hash and version;
+		// removal with only a URL would delete the MSI root node.
+		{store.PlatformWindows, InstallApp, urlOnly, false},
+		{store.PlatformWindows, InstallApp, Params{AppID: "{A-B}", URL: "https://x/a.msi", Hash: "ab", Version: "1.0"}, true},
+		{store.PlatformWindows, RemoveApp, urlOnly, false},
+		{store.PlatformWindows, RemoveApp, Params{AppID: "{A-B}"}, true},
+		// Linux installs packages by name only.
+		{store.PlatformLinux, InstallApp, urlOnly, false},
+		{store.PlatformLinux, InstallApp, Params{AppID: "--force"}, false},
+		{store.PlatformLinux, InstallApp, Params{AppID: "osquery"}, true},
+	}
+	for _, c := range cases {
+		err := Authorize(store.RoleAdmin, corp(c.platform), c.typ, c.p)
+		if (err == nil) != c.ok {
+			t.Errorf("%s %s %+v: err = %v, want ok=%v", c.platform, c.typ, c.p, err, c.ok)
+		}
+	}
+}
+
+func TestCheckParams(t *testing.T) {
+	if CheckParams(InstallApp, Params{}) == nil {
+		t.Error("install_app without appId or url accepted")
+	}
+	if CheckParams(RunScript, Params{}) == nil {
+		t.Error("run_script without a script accepted")
+	}
+	if err := CheckParams(Refresh, Params{}); err != nil {
+		t.Errorf("refresh: %v", err)
+	}
+}
+
 func TestMacPIN(t *testing.T) {
 	d := dev(store.PlatformMacOS, store.OwnershipCorporate)
 	if err := Authorize(store.RoleAdmin, d, Wipe, Params{PIN: "12a456"}); err == nil {

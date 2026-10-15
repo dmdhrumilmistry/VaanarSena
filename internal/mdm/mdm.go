@@ -75,7 +75,7 @@ func (s *Service) Enqueue(ctx context.Context, role string, actorID *string, d *
 	if err := command.Authorize(role, d, typ, p); err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrForbidden, err)
 	}
-	cmd, err := s.Store.EnqueueCommand(ctx, d.ID, typ, params, actorID)
+	cmd, err := s.Store.EnqueueCommandAs(ctx, d, typ, params, actorID)
 	if err != nil {
 		return nil, err
 	}
@@ -89,7 +89,7 @@ func (s *Service) EnqueueSystem(ctx context.Context, d *store.Device, typ string
 	if err := command.Authorize(store.RoleAdmin, d, typ, command.Params{}); err != nil {
 		return err
 	}
-	_, err := s.Store.EnqueueCommand(ctx, d.ID, typ, nil, nil)
+	_, err := s.Store.EnqueueCommandAs(ctx, d, typ, nil, nil)
 	return err
 }
 
@@ -100,7 +100,7 @@ func (s *Service) EnqueueInternal(ctx context.Context, d *store.Device, typ stri
 	if err := command.AuthorizeInternal(d, typ); err != nil {
 		return err
 	}
-	_, err := s.Store.EnqueueCommand(ctx, d.ID, typ, params, nil)
+	_, err := s.Store.EnqueueCommandAs(ctx, d, typ, params, nil)
 	return err
 }
 
@@ -113,7 +113,7 @@ func (s *Service) EnqueueSystemParams(ctx context.Context, d *store.Device, typ 
 	if err := command.Authorize(store.RoleAdmin, d, typ, p); err != nil {
 		return err
 	}
-	_, err = s.Store.EnqueueCommand(ctx, d.ID, typ, params, nil)
+	_, err = s.Store.EnqueueCommandAs(ctx, d, typ, params, nil)
 	return err
 }
 

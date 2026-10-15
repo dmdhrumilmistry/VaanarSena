@@ -176,6 +176,13 @@ spec:
   and `retire` are refused as onboarding steps, and the **BYOD guard still
   applies**: a step not allowed on a personal device is skipped and recorded
   in the audit log as `command.skipped`.
+- A step's parameters are checked when the blueprint is saved (an
+  `install_app` needs `appId` or `url`, a `run_script` needs `script`) and
+  again per device. A step the device's platform cannot carry out is skipped
+  and audited the same way: in the example above, the manifest-URL
+  `install_app` runs on Apple devices only, since Windows needs an MSI's
+  product code, hash and version and Linux a package name (see the
+  [API](api.md#devices-and-commands)).
 
 ## Applying
 

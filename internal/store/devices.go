@@ -29,6 +29,8 @@ type DeviceFilter struct {
 	GroupID   string
 	Tag       string
 	Search    string
+	// Compliant is "true", "false" or "unknown" (never evaluated); "" is any.
+	Compliant string
 	Limit     int
 	Offset    int
 }
@@ -58,6 +60,12 @@ func (s *Store) ListDevices(ctx context.Context, f DeviceFilter) ([]*Device, int
 	}
 	if f.Search != "" {
 		add("(name ILIKE $%[1]d OR serial ILIKE $%[1]d OR assignee ILIKE $%[1]d OR model ILIKE $%[1]d)", "%"+f.Search+"%")
+	}
+	switch f.Compliant {
+	case "true", "false":
+		add("compliant = $%d", f.Compliant == "true")
+	case "unknown":
+		where = append(where, "compliant IS NULL")
 	}
 	clause := ""
 	if len(where) > 0 {

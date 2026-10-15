@@ -42,6 +42,8 @@ type env struct {
 	svc    *mdm.Service
 	token  string
 	google *fakeGoogle
+	box    *secrets.Box
+	api    *api.API
 }
 
 func setup(t *testing.T) *env {
@@ -83,14 +85,15 @@ func setup(t *testing.T) *env {
 		AndroidBase: google.srv.URL + "/v1/"}
 	plat.Routes(mux)
 	plat.Start(ctx)
-	(&api.API{Store: st, Auth: authn, Svc: svc, CA: ca, PublicURL: srv.URL, Org: "E2E", Version: "test", Log: log,
-		Platforms: plat}).Routes(mux)
+	apiSrv := &api.API{Store: st, Auth: authn, Svc: svc, CA: ca, PublicURL: srv.URL, Org: "E2E", Version: "test", Log: log,
+		Platforms: plat, Box: box}
+	apiSrv.Routes(mux)
 
 	hash, _ := auth.HashPassword("e2e-admin-password")
 	if _, err := st.CreateUser(ctx, "admin@e2e.test", "Admin", hash, store.RoleAdmin); err != nil {
 		t.Fatal(err)
 	}
-	e := &env{t: t, srv: srv, st: st, svc: svc, google: google}
+	e := &env{t: t, srv: srv, st: st, svc: svc, google: google, box: box, api: apiSrv}
 	var login struct{ Token string }
 	e.call("POST", "/api/v1/auth/login", `{"email":"admin@e2e.test","password":"e2e-admin-password"}`, 200, &login)
 	e.token = login.Token

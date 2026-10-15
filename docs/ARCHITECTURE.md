@@ -64,7 +64,8 @@ need Google to store your policy history or audit trail.
 | `internal/config` | Environment-driven configuration. |
 | `internal/store` | PostgreSQL access and embedded SQL migrations. |
 | `internal/pki` | Server CA: generated on first boot, persisted encrypted in the database, signs device identity certificates. |
-| `internal/auth` | Users, password hashing, JWT sessions, API tokens, RBAC middleware. |
+| `internal/auth` | Users, password hashing, JWT sessions, API tokens, RBAC middleware, OpenID Connect single sign-on. |
+| `internal/webhook` | Webhook event catalogue, signing, and the delivery dispatcher. |
 | `internal/policy` | Platform-neutral policy model and per-platform translators. |
 | `internal/command` | Platform-neutral command catalogue and the BYOD guard. |
 | `internal/apple` | Enrollment profile generation, check-in and command endpoints, APNs pusher. |
@@ -111,6 +112,13 @@ those blueprints' inline policies, ordered by priority (lower number wins).
   payload that was actually sent, and the device's response.
 - `audit_log`: actor, action, target, details, time. Append only.
 - `pki`: the CA certificate and its key, encrypted with `VS_SECRET_KEY`.
+- `webhooks`, `webhook_events` and `webhook_deliveries`: outbound endpoints
+  (signing secret encrypted), event snapshots, and one delivery per
+  (webhook, event). A trigger on `devices` records events when status,
+  compliance or ownership change, so every writer raises them; a dispatcher
+  leases due deliveries with `FOR UPDATE SKIP LOCKED`, so replicas share the
+  work. See [webhooks.md](webhooks.md).
+- `users.oidc_subject`: the single sign-on identity a user is bound to.
 
 ## Security model
 
@@ -163,8 +171,9 @@ Translators:
 - ChromeOS: reported only (device policy is set in the Google Admin console or
   Chrome Policy API; out of scope for v0.1).
 - Linux: delivered to the agent as the neutral JSON; the agent enforces what it
-  can (screen lock via `gsettings`, LUKS reporting, USB storage via modprobe
-  blacklist) and reports compliance.
+  can (GNOME screen lock through a locked system dconf database, USB storage
+  via a modprobe rule), reports LUKS encryption, and reports compliance with
+  each control. See [platforms.md](platforms.md#linux).
 
 ## Deployment
 
@@ -181,5 +190,8 @@ Translators:
 - Apple VPP / Apps and Books.
 - Windows Autopilot and Azure AD (Entra) federated enrollment.
 - SCEP for certificate renewal on Apple and Windows.
-- OIDC SSO for the console.
-- Compliance-based conditional access webhooks.
+- Compliance evaluation for Apple devices (Windows, Android and Linux report
+  it today).
+
+Done since v0.1: OIDC single sign-on for the console ([sso.md](sso.md)) and
+compliance webhooks for conditional access ([webhooks.md](webhooks.md)).

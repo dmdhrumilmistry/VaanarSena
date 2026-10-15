@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"encoding/json"
+	"errors"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -146,6 +147,62 @@ func (s *Store) EnqueueCommand(ctx context.Context, deviceID, typ string, params
 		deviceID, typ, params, createdBy))
 }
 
+// ErrOwnershipChanged is returned when a device's ownership changed between
+// authorising a command and queueing it.
+var ErrOwnershipChanged = errors.New("device ownership changed; send the command again")
+
+// EnqueueCommandAs queues a command only if the device still has the
+// ownership the command was authorised for. The row lock waits for a
+// reclassification in progress (MakePersonal) and then re-checks, so a
+// corporate-only command can never be queued on a device that just became
+// personal.
+func (s *Store) EnqueueCommandAs(ctx context.Context, d *Device, typ string, params json.RawMessage, createdBy *string) (*Command, error) {
+	if len(params) == 0 {
+		params = json.RawMessage("{}")
+	}
+	c, err := scanCmd(s.DB.QueryRow(ctx, `INSERT INTO commands (device_id, type, params, created_by)
+		SELECT id, $3, $4, $5 FROM devices WHERE id = $1 AND ownership = $2 FOR SHARE
+		RETURNING `+cmdCols, d.ID, d.Ownership, typ, params, createdBy))
+	if errors.Is(err, ErrNotFound) {
+		return nil, ErrOwnershipChanged
+	}
+	return c, err
+}
+
+// MakePersonal reclassifies a device as personally owned, atomically:
+// hardware identifiers collected while it was corporate are removed (the
+// serial number and the platform inventory facts, which are collected again
+// within the personal limits) and commands not permitted on personal devices
+// that have not completed are cancelled. It returns the cancelled command
+// types.
+func (s *Store) MakePersonal(ctx context.Context, id string, notPersonal []string) (*Device, []string, error) {
+	tx, err := s.DB.Begin(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	if _, err := tx.Exec(ctx, `SELECT 1 FROM devices WHERE id = $1 FOR UPDATE`, id); err != nil {
+		return nil, nil, err
+	}
+	d, err := scanDevice(tx.QueryRow(ctx, `UPDATE devices SET ownership = 'personal', serial = '',
+		facts = facts - 'linux' - 'windows' - 'apple' - 'android' - 'chromeos', updated_at = now()
+		WHERE id = $1 RETURNING `+deviceCols, id))
+	if err != nil {
+		return nil, nil, err
+	}
+	rows, err := tx.Query(ctx, `UPDATE commands SET status = 'cancelled', completed_at = now(),
+		error = 'cancelled: the device was reclassified as personal'
+		WHERE device_id = $1 AND status IN ('queued', 'not_now', 'sent') AND type = ANY($2) RETURNING type`, id, notPersonal)
+	if err != nil {
+		return nil, nil, err
+	}
+	cancelled, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	if err != nil {
+		return nil, nil, err
+	}
+	return d, cancelled, tx.Commit(ctx)
+}
+
 // CommandByID fetches a command.
 func (s *Store) CommandByID(ctx context.Context, id string) (*Command, error) {
 	return scanCmd(s.DB.QueryRow(ctx, `SELECT `+cmdCols+` FROM commands WHERE id = $1`, id))
@@ -246,6 +303,27 @@ func (s *Store) ListCommands(ctx context.Context, deviceID string, limit int) ([
 			return nil, err
 		}
 		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
+// DevicesWithQueuedCommands lists devices of a platform that have commands
+// waiting for delivery, so API-driven drivers can drain queues whose wake-up
+// was missed (driver down or reconfigured, server restarted).
+func (s *Store) DevicesWithQueuedCommands(ctx context.Context, platform string) ([]*Device, error) {
+	rows, err := s.DB.Query(ctx, `SELECT `+deviceCols+` FROM devices WHERE platform = $1
+		AND id IN (SELECT device_id FROM commands WHERE status IN ('queued', 'not_now'))`, platform)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []*Device
+	for rows.Next() {
+		d, err := scanDevice(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, d)
 	}
 	return out, rows.Err()
 }

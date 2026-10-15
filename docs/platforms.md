@@ -75,6 +75,18 @@ see [Hosting](hosting.md).
 Personal PCs receive only sign-in (`DeviceLock`) policies. BitLocker, camera,
 USB and update policies are company-owned only.
 
+Compliance is evaluated at each inventory refresh against what the device's
+policy requires and what Windows reports: a PC whose policy requires
+encryption is non-compliant until BitLocker reports it encrypted. A PC with no
+encryption requirement is not marked non-compliant for being unencrypted.
+Windows compliance covers encryption only: passcode, firewall and the other
+settings are enforced through the Policy CSP but not evaluated, so keep that
+in mind before using Windows compliance for conditional access.
+
+Installing an MSI needs `appId` (the product code), `url`, `hash` (SHA-256 of
+the file) and `version`; removing one needs `appId`. Commands missing them are
+refused when sent.
+
 ## Android
 
 Uses Google's **Android Management API**. You need a Google Cloud project with
@@ -120,6 +132,11 @@ Devices sync every 5 minutes. Apps are managed through the policy **Apps**
 section (platform Android), and raw Android Management API fields can be added
 under **Custom payloads**.
 
+Commands are sent to Google as soon as they are queued. If that is missed (the
+Android connection was down or reconfigured, or the server restarted), the
+next sync sends whatever is still queued. A command shows as done once Google
+accepts it; the device carries it out when it next connects.
+
 ## ChromeOS
 
 ChromeOS devices are enrolled into your Google Workspace or Chrome Enterprise
@@ -137,6 +154,12 @@ Chromebooks sync every 15 minutes. Supported commands: refresh, restart, lock
 (disable), erase (remote powerwash) and retire (deprovision). Device policy
 stays in the Google Admin console.
 
+A Chromebook counts as enrolled when it is first imported active, or when it
+finishes provisioning. It then joins its smart groups and runs the onboarding
+steps of blueprints that target them, like devices of other platforms (steps
+ChromeOS does not support are skipped and audited). Commands still queued at a
+sync are sent then.
+
 ## Linux
 
 Built in. The agent supports systemd-based distributions with apt, dnf, zypper
@@ -153,12 +176,27 @@ sudo systemctl enable --now vaanarsena-agent
 ```
 
 The agent checks in every 60 seconds over mutual TLS. Company-owned machines
-support lock, restart, shutdown, OS update, package install and remove, and
-running scripts (admins only; the full script is written to the audit log).
-It blocks USB storage when a policy asks and reports disk encryption (LUKS)
-compliance.
+support lock, restart, shutdown, OS update, package install and remove (by
+package name in `appId`), and running scripts (admins only; the full script is
+written to the audit log).
+
+What the agent enforces from the policy, on company-owned machines:
+
+| Policy | On the machine |
+|---|---|
+| `restrictions.usbStorage: false` | `/etc/modprobe.d/vaanarsena-usb.conf` stops the `usb-storage` module loading. Removed when the policy stops blocking USB storage. |
+| `passcode.required`, `passcode.maxInactivityMinutes` | GNOME screen lock through the system dconf database: `/etc/dconf/db/local.d/00-vaanarsena` sets the idle delay and turns the lock on, `locks/vaanarsena` stops users changing them, then `dconf update`. `/etc/dconf/profile/user` is created if missing and never rewritten. Machines without dconf (servers, other desktops) are not enforced. |
+| `encryption.required` | Reported only: the machine is non-compliant without a LUKS volume. |
+
+The agent writes only files it owns and removes them when the policy no longer
+asks for them, when the machine becomes personal, and on retire. **Re-apply
+policy** restores anything changed on the machine since. Compliance reports
+each control the agent could not confirm, for example "USB storage must be
+blocked" or "screen lock settings are not applied".
 
 Personal machines run in **inventory-only** mode: the agent sends basic facts
-(no serial numbers or hardware identifiers), evaluates compliance, enforces
-nothing, and refuses every command except refresh and retire, even if the
-server were to send one.
+(no serial numbers or hardware identifiers), enforces nothing, and refuses
+every command except refresh, re-apply policy and retire, even if the server
+were to send one. Compliance on personal machines covers only what is
+observed, not enforced (disk encryption), so they are not reported
+non-compliant for controls the agent deliberately leaves alone.

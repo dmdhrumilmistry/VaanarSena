@@ -17,8 +17,28 @@ VaanarSena is configured with environment variables.
 | `VS_SESSION_TTL` | `12h` | Console session lifetime. |
 | `VS_LOG_LEVEL` | `info` | `debug`, `info`, `warn` or `error`. Logs are JSON on stdout. |
 | `VS_BOOTSTRAP_ADMIN_EMAIL` / `VS_BOOTSTRAP_ADMIN_PASSWORD` | | Create the first admin when no users exist. Ignored afterwards. |
-
 | `VS_CA_CERT_FILE` / `VS_CA_KEY_FILE` | | Use an operator-supplied device CA (PEM) instead of the generated one, e.g. so an ingress can verify device certificates. |
+| `VS_WEB_DIR` | | Development only: serve the console from this directory on disk instead of the files built into the binary. |
+
+## Single sign-on (OpenID Connect)
+
+Set `VS_OIDC_ISSUER` to let people sign in to the console with your identity
+provider. Password sign-in keeps working. See [sso.md](sso.md).
+
+| Variable | Default | Description |
+|---|---|---|
+| `VS_OIDC_ISSUER` | | Issuer URL, for example `https://login.microsoftonline.com/<tenant>/v2.0`. Must be `https://` (`http://` only for localhost). Enables SSO. |
+| `VS_OIDC_CLIENT_ID` | | Client (application) ID. Required with the issuer. |
+| `VS_OIDC_CLIENT_SECRET` | | Client secret. Leave empty for a public client. |
+| `VS_OIDC_SCOPES` | `openid email profile` | Space-separated scopes. |
+| `VS_OIDC_NAME` | `single sign-on` | Label on the sign-in button: "Sign in with ...". |
+| `VS_OIDC_GROUPS_CLAIM` | `groups` | ID token claim that lists the user's groups. |
+| `VS_OIDC_ADMIN_GROUPS` / `VS_OIDC_OPERATOR_GROUPS` / `VS_OIDC_AUDITOR_GROUPS` | | Comma-separated groups that grant each role. When any is set, groups decide the role at every sign-in and accounts are created on first sign-in. |
+| `VS_OIDC_ALLOWED_DOMAINS` | | Comma-separated email domains allowed to use SSO. |
+| `VS_OIDC_TRUST_UNVERIFIED_EMAIL` | `false` | Link and create accounts from emails the provider does not mark `email_verified: true`. Only for providers that never send the claim and do not let users choose their address. See [sso.md](sso.md). |
+
+The redirect URI to register with the provider is
+`<VS_PUBLIC_URL>/api/v1/auth/oidc/callback`.
 
 ## Declarative configuration (GitOps)
 
@@ -45,6 +65,20 @@ VaanarSena is configured with environment variables.
 | `VS_ANDROID_ENTERPRISE` | AMAPI enterprise, for example `enterprises/LC01abcdef`. Enables Android. |
 | `VS_GOOGLE_ADMIN_SUBJECT` | Workspace admin impersonated through domain-wide delegation. Enables ChromeOS. |
 | `VS_GOOGLE_CUSTOMER_ID` | Workspace customer ID (default `my_customer`). |
+
+## Linux agent
+
+| Variable | Description |
+|---|---|
+| `VS_AGENT_ALLOW_HTTP` | Set to `1` to let `vaanarsena-agent enroll` use an `http://` server. Local testing only. |
+
+## vsctl
+
+| Variable | Description |
+|---|---|
+| `VS_SERVER` | Server base URL. Required. |
+| `VS_TOKEN` | API token (`vsat_...`), created under Account in the console. Required. |
+| `VS_CA_FILE` | PEM file to trust for the server's TLS certificate (private PKI). Optional. |
 
 ## CLI
 

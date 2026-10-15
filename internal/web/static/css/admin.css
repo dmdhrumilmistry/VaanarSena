@@ -143,3 +143,19 @@ textarea.mf-editor-ta:focus, textarea.mf-editor-ta:hover { box-shadow: none; bor
 .badge.role-admin { background: var(--brand-soft); color: var(--brand-text); }
 .badge.role-operator { background: var(--info-soft); color: var(--info-text); }
 .account-main > *, .settings-stack > *, .result-stack > * { margin-top: 0 !important; }
+
+/* Settings > Webhooks */
+.wh-events { border: 0; margin: 0; padding: 0; display: grid; gap: 12px; min-width: 0; }
+.wh-events legend { padding: 0; margin-bottom: 4px; font-size: 13px; font-weight: 600; color: var(--text); }
+.wh-events .check { align-items: flex-start; }
+.wh-events .check input { margin-top: 2px; }
+.wh-event-help { display: block; margin-top: 2px; }
+.wh-url { overflow-wrap: anywhere; }
+.wh-badges { flex-wrap: wrap; }
+.wh-error { color: var(--bad-text); overflow-wrap: anywhere; }
+.wh-more { display: flex; justify-content: center; padding-top: 4px; }
+.wh-dl-list { list-style: none; margin: 0; padding: 0; }
+.wh-dl { display: grid; gap: 4px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.wh-dl:first-child { padding-top: 0; }
+.wh-dl-head { display: flex; align-items: center; gap: 10px; }
+.wh-more[hidden] { display: none; }

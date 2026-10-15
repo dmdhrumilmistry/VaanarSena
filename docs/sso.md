@@ -1,0 +1,101 @@
+# Single sign-on
+
+People can sign in to the console with your identity provider (Entra ID,
+Okta, Google Workspace, Keycloak, Authentik or any other OpenID Connect
+provider). Password sign-in keeps working alongside it, so an admin with a
+password can always get in if the provider is down or misconfigured.
+
+## How it works
+
+VaanarSena uses the OpenID Connect authorization code flow with PKCE:
+
+1. "Sign in with ..." sends the browser to the provider with a fresh `state`,
+   `nonce` and PKCE challenge. They are kept in a short-lived, encrypted,
+   `HttpOnly` cookie, never in the URL or the database.
+2. The provider sends the browser back to
+   `<VS_PUBLIC_URL>/api/v1/auth/oidc/callback`. VaanarSena exchanges the code
+   for an ID token and verifies it locally: signature against the provider's
+   published keys (RS256, PS256 or ES256 families), issuer, audience (and
+   `azp` when there are several audiences), expiry and nonce.
+3. The verified identity is mapped to a VaanarSena user (below) and the
+   browser gets the same session cookie a password sign-in gives.
+
+Every sign-in, and every refused one with the reason, is in the audit log
+(`auth.login` and `auth.login_failed` with `"method": "oidc"`).
+
+## Set it up
+
+1. Register an application (web, confidential client) with your provider.
+   Redirect URI: `<VS_PUBLIC_URL>/api/v1/auth/oidc/callback`.
+2. Make sure the ID token carries `email`, and `groups` if you want roles to
+   come from groups. Many providers need a setting for the groups claim; the
+   claim name is configurable with `VS_OIDC_GROUPS_CLAIM`.
+3. Set the variables in [configuration.md](configuration.md#single-sign-on-openid-connect)
+   and restart:
+
+```bash
+VS_OIDC_ISSUER=https://login.microsoftonline.com/<tenant-id>/v2.0
+VS_OIDC_CLIENT_ID=<application-id>
+VS_OIDC_CLIENT_SECRET=<secret>
+VS_OIDC_NAME="Microsoft"
+VS_OIDC_ADMIN_GROUPS=<object-id-of-the-mdm-admins-group>
+VS_OIDC_OPERATOR_GROUPS=<object-id-of-the-helpdesk-group>
+VS_OIDC_AUDITOR_GROUPS=<object-id-of-the-security-group>
+VS_OIDC_ALLOWED_DOMAINS=example.com
+```
+
+`VS_OIDC_ISSUER` must match the `issuer` the provider publishes at
+`<issuer>/.well-known/openid-configuration` exactly, including any trailing
+slash.
+
+## Who gets in, and with which role
+
+There are two modes.
+
+**Roles from groups** (any `VS_OIDC_*_GROUPS` is set). Groups are
+authoritative:
+
+- A person in a mapped group gets the highest role their groups grant, at
+  every sign-in, so removing them from the group in the provider takes effect
+  at their next sign-in.
+- A person in no mapped group is refused.
+- Accounts are created on first sign-in.
+- The last enabled admin is never demoted by a group change; the refusal is
+  noted in the audit log entry for that sign-in.
+
+**Existing users only** (no group variables). Only people who already have a
+VaanarSena account, matched by email, can sign in, and they keep the role an
+admin gave them under Users. SSO never creates accounts in this mode.
+
+In both modes:
+
+- The first SSO sign-in links the account to the provider's identity
+  (issuer and subject). Later sign-ins match on that, not on the email, so a
+  person who changes their email at the provider keeps their account, and a
+  different identity that claims the same email is refused.
+- An email is only used to link to an existing account, or to create one,
+  when the ID token says `email_verified: true`. Otherwise anyone able to set
+  their own email address at the provider could take over the account that
+  owns it. Some providers never send the claim (Entra ID, for one); for those,
+  either ask an admin to have each person sign in once with a verified
+  address, or set `VS_OIDC_TRUST_UNVERIFIED_EMAIL=true` only if users cannot
+  choose their own email at that provider.
+- Disabled users are refused.
+- `VS_OIDC_ALLOWED_DOMAINS`, when set, limits SSO to those email domains.
+
+Accounts created by SSO have no password. An admin can set one under Users
+(for emergency access); the Users page shows how each person signs in.
+
+## When sign-in fails
+
+The sign-in page explains the reason, and the audit log has the detail:
+
+| Shown as | Cause |
+|---|---|
+| not in a group that grants access | groups are mapped and none of the person's groups is |
+| no console account | no group mapping and no existing user with that email |
+| could not be reached | discovery or the token endpoint failed; check the issuer URL and network |
+| could not be verified | the ID token failed a check (signature, audience, expiry, nonce); see the server log |
+| took too long | more than ten minutes passed, or sign-in started in another tab |
+| has not verified your email | the ID token lacks `email_verified: true` on a first sign-in; see above |
+| already linked to a different sign-in | the email belongs to a user linked to another identity |

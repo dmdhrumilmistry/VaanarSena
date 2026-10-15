@@ -57,6 +57,13 @@ type User struct {
 	Disabled     bool       `json:"disabled"`
 	CreatedAt    time.Time  `json:"createdAt"`
 	LastLoginAt  *time.Time `json:"lastLoginAt,omitempty"`
+	// OIDCSubject is the single sign-on identity the user is bound to.
+	OIDCSubject *string `json:"-"`
+	// SSO reports whether the user has signed in with single sign-on.
+	SSO bool `json:"sso"`
+	// HasPassword is false for users created by single sign-on until an admin
+	// sets a password.
+	HasPassword bool `json:"hasPassword"`
 }
 
 // APIToken is a long-lived automation credential.
