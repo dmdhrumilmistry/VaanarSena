@@ -29,9 +29,11 @@ offered.
 
 The device page shows compliance issues, properties, command history, the
 effective policy (the merge of everything that applies), the raw inventory and
-its groups and tags. Commands have proper forms (a lock message, a macOS PIN,
-an app ID, a script), and on personal devices only work-container commands
-are offered.
+its groups and tags. Commands have proper forms (a lock message on Apple, a
+macOS PIN, an app ID, a script), and on personal devices only work-container
+commands are offered. **Edit details** in the device's actions menu renames it
+or changes its user; admins can also reclassify it between company-owned and
+personal, which re-evaluates its groups and policy at once.
 
 ![A device](assets/screens/device.png)
 
@@ -114,9 +116,12 @@ apply. Export downloads everything as manifests to keep in Git. See
 
 ## Settings
 
-Connect Apple, Google, Android Enterprise and ChromeOS, and see the server's
-version, public address and device certificate authority. See
-[Platform setup](platforms.md).
+**Platforms** connects Apple, Google, Android Enterprise and ChromeOS (see
+[Platform setup](platforms.md)). **Webhooks** sends signed notifications to
+other systems when a device's compliance, enrollment or ownership changes,
+with a delivery history, retries and test events (see [Webhooks](webhooks.md)).
+**Server** shows the version, public address and device certificate
+authority.
 
 ## Govern
 
@@ -125,5 +130,9 @@ enrollment, admins do everything. The **audit log** records every change,
 sign-in and refused command, and cannot be edited, even in the database.
 **Account** is where you change your password and create API tokens for
 automation.
+
+With [single sign-on](sso.md) configured, the sign-in page offers "Sign in
+with ..." above the password form, and **Users** shows whether each person
+signs in with SSO, a password or both.
 
 ![Dark theme](assets/screens/devices-dark.png)

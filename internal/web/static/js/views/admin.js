@@ -63,6 +63,7 @@ export async function users() {
       { label: "User", render: (u) => h("div", { class: "userline" }, h("span", { class: "avatar", "aria-hidden": "true" }, initials(u.name || u.email)),
         h("div", {}, h("div", { class: "primary-cell" }, u.name || u.email, u.id === state.me.id ? h("span", { class: "you" }, badge("You")) : null), u.name ? h("div", { class: "secondary-cell" }, u.email) : null)) },
       { label: "Role", render: (u) => roleBadge(u.role) },
+      { label: "Sign-in", cls: "hide-sm", render: (u) => u.sso ? badge(u.hasPassword ? "SSO and password" : "SSO", "info") : badge("Password") },
       { label: "State", render: (u) => u.disabled ? badge("Disabled", "bad") : badge("Active", "ok") },
       { label: "Last sign-in", render: (u) => h("span", { title: u.lastLoginAt ? fmtTime(u.lastLoginAt) : "" }, ago(u.lastLoginAt)) },
       { label: "", cls: "col-actions", render: rowActions },
@@ -160,10 +161,13 @@ export async function account() {
         h("div", {}, h("h2", {}, me.name || me.email), me.name ? h("div", { class: "email" }, me.email) : null),
         h("div", { class: "profile-kv" },
           h("div", {}, h("span", {}, "Role"), roleBadge(me.role)),
-          h("div", {}, h("span", {}, "Email"), h("span", {}, me.email)))))),
+          h("div", {}, h("span", {}, "Email"), h("span", {}, me.email)),
+          me.sso ? h("div", {}, h("span", {}, "Sign-in"), badge("Single sign-on", "info")) : null)))),
       h("div", { class: "account-main" },
-        panel({ title: "Password", sub: "Use at least 12 characters." }, body(h("div", { class: "form form-narrow" },
-          field("Current password", cur), field("New password", nw), pwOut, h("div", {}, pwBtn)))),
+        me.hasPassword === false
+          ? panel({ title: "Password" }, body(notice("info", "You sign in with single sign-on, so this account has no password. An administrator can set one for emergency access.")))
+          : panel({ title: "Password", sub: "Use at least 12 characters." }, body(h("div", { class: "form form-narrow" },
+            field("Current password", cur), field("New password", nw), pwOut, h("div", {}, pwBtn)))),
         panel({ title: "API tokens", sub: "For vsctl, CI and other automation. A token acts with your role. Send it as Authorization: Bearer <token>." },
           body(h("div", { class: "form form-narrow" }, field("Name", tname), field("Expires", days), tokOut, h("div", {}, tokBtn))),
           table([

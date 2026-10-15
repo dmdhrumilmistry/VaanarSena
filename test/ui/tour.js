@@ -10,7 +10,7 @@ const PAGES = [
   ["overview", "/"], ["devices", "/devices"], ["device", "DEVICE"], ["device-commands", "DEVICE?tab=commands"],
   ["groups", "/groups"], ["group-edit", "GROUP"], ["group-new", "/groups/new"], ["policies", "/policies"],
   ["policy-edit", "POLICY"], ["blueprints", "/blueprints"], ["blueprint-edit", "BLUEPRINT"], ["manifests", "/manifests"],
-  ["enroll", "/enroll"], ["settings", "/settings/platforms"], ["users", "/users"], ["audit", "/audit"], ["account", "/account"],
+  ["enroll", "/enroll"], ["settings", "/settings/platforms"], ["settings-webhooks", "/settings/webhooks"], ["users", "/users"], ["audit", "/audit"], ["account", "/account"],
   ["software", "/software"], ["device-software", "DEVICE?tab=software"], ["device-software-personal", "PERSONALDEV?tab=software"],
 ];
 

@@ -68,8 +68,11 @@ func (s *Spec) Validate() error {
 		if forbidden[st.Type] {
 			errs = append(errs, fmt.Errorf("onEnroll[%d]: %s cannot be an onboarding step", i, st.Type))
 		}
-		if _, err := command.ParseParams(st.Params); err != nil {
+		p, err := command.ParseParams(st.Params)
+		if err != nil {
 			errs = append(errs, fmt.Errorf("onEnroll[%d].params: %w", i, err))
+		} else if err := command.CheckParams(st.Type, p); err != nil {
+			errs = append(errs, fmt.Errorf("onEnroll[%d]: %w", i, err))
 		}
 	}
 	if s.Policy == nil && len(s.Policies) == 0 && len(s.OnEnroll) == 0 {

@@ -12,7 +12,10 @@ Minimum role in brackets.
 |---|---|---|
 | POST | `/auth/login` | `{email, password}` -> `{user, token}` |
 | POST | `/auth/logout` | clears the session cookie |
-| GET | `/auth/me` | [auditor] current user |
+| GET | `/auth/providers` | unauthenticated: `{password: true, oidc: {enabled, name}}` for the sign-in page |
+| GET | `/auth/oidc/start?next=` | unauthenticated: redirects to the identity provider; `next` is a path on this site. See [sso.md](sso.md) |
+| GET | `/auth/oidc/callback` | unauthenticated: the provider's redirect target; sets the session cookie and redirects to `next`, or to `/login?sso_error=<code>` |
+| GET | `/auth/me` | [auditor] current user; `sso` and `hasPassword` tell how they sign in |
 | POST | `/auth/password` | [auditor] `{current, new}` |
 | GET, POST | `/api-tokens` | [auditor] list or create (`{name, expiresInDays}`); the token is returned once |
 | DELETE | `/api-tokens/{id}` | [auditor] |
@@ -21,12 +24,12 @@ Minimum role in brackets.
 
 | Method | Path | |
 |---|---|---|
-| GET | `/devices?platform=&ownership=&status=&group=&tag=&q=&limit=&offset=` | [auditor] |
+| GET | `/devices?platform=&ownership=&status=&group=&tag=&compliant=&q=&limit=&offset=` | [auditor] `compliant` is `true`, `false` or `unknown` (never evaluated) |
 | GET | `/devices/{id}` | [auditor] device, groups, effective policy |
-| PATCH | `/devices/{id}` | [operator] `{name, assignee}`; `ownership` needs admin |
+| PATCH | `/devices/{id}` | [operator] `{name, assignee}`; `ownership` needs admin. Changing ownership or assignee re-evaluates smart groups and re-pushes policy. Making a device personal removes its serial and inventory and cancels pending commands not allowed on personal devices |
 | DELETE | `/devices/{id}` | [admin] deletes the record only; retire the device first |
-| GET | `/devices/{id}/commands` | [auditor] |
-| POST | `/devices/{id}/commands` | [operator] `{type, params}`; returns 202 with the queued command |
+| GET | `/devices/{id}/commands?limit=` | [auditor] newest first, up to 500 |
+| POST | `/devices/{id}/commands` | [operator] `{type, params}`; returns 202 with the queued command, 403 if not permitted, 409 if the device's ownership changed meanwhile |
 | POST | `/commands/{id}/cancel` | [operator] |
 | GET | `/commands/catalogue` | [auditor] command types, roles, platforms, BYOD eligibility |
 | GET | `/devices/{id}/inventory?kind=app\|service\|profile&q=&limit=&offset=` | [auditor] installed apps, services or profiles, with `counts`, `supported` and a BYOD `note` |
@@ -35,6 +38,19 @@ Minimum role in brackets.
 
 Command `params`: `message`, `phone`, `pin` (macOS, 6 digits), `appId`, `url`,
 `hash` and `version` (Windows MSI), `script` (Linux), `preserveDataPlan`.
+`message` and `phone` are shown on Apple devices only.
+
+Parameters are checked against the target platform when the command is sent,
+and a command that cannot be delivered is refused with 403:
+
+| Command | Requires |
+|---|---|
+| `install_app`, `remove_app` (any platform) | `appId` or `url` |
+| `install_app` on Windows | `appId` (MSI product code), `url`, `hash` and `version` |
+| `remove_app` on Windows | `appId` (MSI product code) |
+| `remove_app` on Apple | `appId` (bundle ID) |
+| `install_app`, `remove_app` on Linux | `appId`, a package name |
+| `run_script` | `script` |
 
 ```bash
 curl -X POST https://mdm.example.com/api/v1/devices/$ID/commands \
@@ -82,6 +98,38 @@ onboarding steps. Formats are in [manifests.md](manifests.md).
 | GET | `/export?format=yaml\|json` | [admin] every group, policy and blueprint as manifests, secrets included |
 
 `vsctl` wraps these; see [manifests.md](manifests.md).
+
+## Webhooks
+
+All [admin]. See [webhooks.md](webhooks.md) for events, the request format and
+signature verification.
+
+| Method | Path | |
+|---|---|---|
+| GET | `/webhooks` | every webhook with its `lastDelivery` |
+| GET | `/webhooks/events` | subscribable events with descriptions |
+| POST | `/webhooks` | `{name, url, events, enabled}` -> `{webhook, secret}`; the signing secret is returned only here. 400 with `problems` if invalid |
+| GET, PUT, DELETE | `/webhooks/{id}` | PUT takes the same body as POST and keeps the secret |
+| POST | `/webhooks/{id}/rotate-secret` | -> `{secret}`; requests are signed with it from now on |
+| POST | `/webhooks/{id}/test` | queues a `webhook.test` event for this webhook only; 202 with the delivery |
+| GET | `/webhooks/{id}/deliveries?before=&limit=` | newest first, with status, attempts, response code, last error and the event payload |
+| POST | `/webhooks/{id}/deliveries/{deliveryId}/retry` | send a pending or failed delivery again now; 409 if it was delivered or is being sent |
+
+## Platforms
+
+All [admin], except the Android sign-up callback. Credentials set here are
+stored encrypted; those set by environment variables cannot be changed here.
+
+| Method | Path | |
+|---|---|---|
+| GET | `/platforms` | state of Apple, Google, Android, ChromeOS, Windows and Linux, with the public URL |
+| POST | `/platforms/apple/csr` | -> `{csr}`: a push certificate signing request; its key stays on the server |
+| PUT, DELETE | `/platforms/apple` | PUT `{certificate, der, privateKey, topic}`: the push certificate from Apple (PEM, or base64 DER with `der: true`); `privateKey` is optional when the CSR came from the server, `topic` when it can be read from the certificate |
+| PUT, DELETE | `/platforms/google` | PUT `{credentials, projectId}`: a service account key (JSON) |
+| POST | `/platforms/android/signup` | -> `{signupUrl}`: starts Android Enterprise sign-up |
+| GET | `/platforms/android/callback` | unauthenticated: Google's redirect after sign-up |
+| PUT, DELETE | `/platforms/android` | PUT `{enterprise}`: use an existing enterprise |
+| PUT, DELETE | `/platforms/chromeos` | PUT `{adminSubject, customerId}` |
 
 ## Administration
 

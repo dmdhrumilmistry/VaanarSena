@@ -28,7 +28,6 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
-	"regexp"
 	"runtime"
 	"strings"
 	"syscall"
@@ -253,7 +252,7 @@ var errRetired = errors.New("retired")
 func (r *runner) request(ctx context.Context) agent.CheckinRequest {
 	req := agent.CheckinRequest{Facts: facts(r.personal), Results: r.pending, PolicyVersion: r.policyV}
 	if r.policy != nil {
-		req.Compliance = evaluate(r.policy)
+		req.Compliance = evaluate(r.policy, r.personal)
 	}
 	req.Inventory = r.inv.next(ctx, time.Now(), r.personal, r.known, collectInventory)
 	return req
@@ -280,15 +279,16 @@ func (r *runner) checkin(ctx context.Context) (time.Duration, error) {
 		return 0, err
 	}
 	r.pending = nil
+	ownershipChanged := r.known && r.personal != cr.Personal
 	r.personal, r.known = cr.Personal, true
 	r.inv.sent(time.Now())
 	policyChanged := false
 	if cr.PolicyVersion != r.policyV && cr.Policy != nil {
 		r.policy, r.policyV = cr.Policy, cr.PolicyVersion
-		if !r.personal {
-			enforce(cr.Policy)
-		}
 		policyChanged = true
+	}
+	if policyChanged || ownershipChanged {
+		r.applyPolicy()
 	}
 	retire := false
 	for _, c := range cr.Commands {
@@ -340,12 +340,10 @@ func (r *runner) savePending() {
 }
 
 func (r *runner) retire() error {
-	_ = os.Remove("/etc/modprobe.d/vaanarsena-usb.conf")
+	enforce(nil, true) // remove every setting the agent applied
 	_ = exec.Command("systemctl", "disable", "vaanarsena-agent").Run()
 	return os.RemoveAll(r.dir)
 }
-
-var pkgName = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9.+_:-]{0,127}$`)
 
 func (r *runner) execute(ctx context.Context, c agent.Command) agent.Result {
 	res := agent.Result{CommandID: c.ID}
@@ -360,11 +358,15 @@ func (r *runner) execute(ctx context.Context, c agent.Command) agent.Result {
 	}
 	var out string
 	switch c.Type {
-	case command.Refresh, command.ApplyPolicy:
-		// Facts are sent on every check-in; policy is applied on receipt. A
-		// refresh also asks for a fresh software inventory with the result.
-		if c.Type == command.Refresh {
-			r.inv.force = true
+	case command.Refresh:
+		// Facts are sent on every check-in; a refresh also asks for a fresh
+		// software inventory with the result.
+		r.inv.force = true
+	case command.ApplyPolicy:
+		// Policy is applied on receipt; re-applying restores settings changed
+		// on the machine since (a deleted USB block, an edited dconf file).
+		if r.policy != nil {
+			r.applyPolicy()
 		}
 
 	case command.Lock:
@@ -376,7 +378,7 @@ func (r *runner) execute(ctx context.Context, c agent.Command) agent.Result {
 	case command.OSUpdate:
 		out, err = pkgManager(ctx, "upgrade", "")
 	case command.InstallApp, command.RemoveApp:
-		if !pkgName.MatchString(p.AppID) {
+		if !command.PackageName.MatchString(p.AppID) {
 			err = fmt.Errorf("invalid package name %q", p.AppID)
 			break
 		}
@@ -532,31 +534,9 @@ func facts(personal bool) map[string]any {
 	return f
 }
 
-// --- policy ---
-
-const usbBlock = "/etc/modprobe.d/vaanarsena-usb.conf"
-
-// enforce applies what a userspace agent can safely enforce on Linux.
-func enforce(doc *policy.Document) {
-	if r := doc.Restrictions; r != nil && r.USBStorage != nil {
-		if !*r.USBStorage {
-			_ = os.WriteFile(usbBlock, []byte("# Managed by VaanarSena\ninstall usb-storage /bin/false\n"), 0o644)
-		} else {
-			_ = os.Remove(usbBlock)
-		}
+// applyPolicy enforces the current policy and logs what could not be applied.
+func (r *runner) applyPolicy() {
+	for _, err := range enforce(r.policy, r.personal) {
+		log.Printf("enforce policy: %v", err)
 	}
-}
-
-// evaluate reports compliance with the controls the agent can observe.
-func evaluate(doc *policy.Document) *agent.Compliance {
-	var issues []string
-	if doc.Encryption != nil && doc.Encryption.Required && !diskEncrypted() {
-		issues = append(issues, "disk encryption required but no LUKS volume found")
-	}
-	if r := doc.Restrictions; r != nil && r.USBStorage != nil && !*r.USBStorage {
-		if _, err := os.Stat(usbBlock); err != nil {
-			issues = append(issues, "USB storage must be blocked")
-		}
-	}
-	return &agent.Compliance{Compliant: len(issues) == 0, Issues: issues}
 }

@@ -65,6 +65,8 @@ nav:
       - The console: console.md
       - Platform setup: platforms.md
       - Manifests and GitOps: manifests.md
+      - Single sign-on: sso.md
+      - Webhooks: webhooks.md
   - Reference:
       - REST API: api.md
       - Security: security.md

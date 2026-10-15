@@ -22,9 +22,16 @@ import (
 
 func (a *API) listDevices(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
+	switch q.Get("compliant") {
+	case "", "true", "false", "unknown":
+	default:
+		httpx.Error(w, http.StatusBadRequest, "compliant must be true, false or unknown")
+		return
+	}
 	devs, total, err := a.Store.ListDevices(r.Context(), store.DeviceFilter{
 		Platform: q.Get("platform"), Ownership: q.Get("ownership"), Status: q.Get("status"),
-		GroupID: q.Get("group"), Tag: q.Get("tag"), Search: q.Get("q"), Limit: queryInt(r, "limit", 100), Offset: queryInt(r, "offset", 0),
+		GroupID: q.Get("group"), Tag: q.Get("tag"), Search: q.Get("q"), Compliant: q.Get("compliant"),
+		Limit: queryInt(r, "limit", 100), Offset: queryInt(r, "offset", 0),
 	})
 	if err != nil {
 		a.fail(w, err)
@@ -93,18 +100,43 @@ func (a *API) patchDevice(w http.ResponseWriter, r *http.Request) {
 	if !a.audit(w, r, "device.update", id, req) {
 		return
 	}
-	d, err := a.Store.PatchDevice(r.Context(), id, store.DevicePatch{Name: req.Name, Assignee: req.Assignee, Ownership: req.Ownership})
+	toPersonal := req.Ownership != nil && *req.Ownership == store.OwnershipPersonal
+	patch := store.DevicePatch{Name: req.Name, Assignee: req.Assignee}
+	if !toPersonal {
+		patch.Ownership = req.Ownership
+	}
+	d, err := a.Store.PatchDevice(r.Context(), id, patch)
 	if err != nil {
 		a.fail(w, err)
 		return
 	}
-	if req.Ownership != nil && d.IsPersonal() {
-		// BYOD: software collected while the device was corporate is removed;
-		// what the platform allows for personal devices is collected again.
+	if toPersonal {
+		// BYOD, in one transaction: hardware identifiers go, and commands
+		// not permitted on personal devices that are still pending are
+		// cancelled, so nothing queued while it was corporate reaches it.
+		var cancelled []string
+		if d, cancelled, err = a.Store.MakePersonal(r.Context(), id, command.NotPersonal()); err != nil {
+			a.fail(w, err)
+			return
+		}
+		if len(cancelled) > 0 {
+			_ = a.Store.Audit(r.Context(), principal(r).User.Email, "command.cancelled", id,
+				map[string]any{"types": cancelled, "reason": "device reclassified as personal"}, httpx.ClientIP(r))
+		}
+		// Software collected while the device was corporate is removed; what
+		// the platform allows for personal devices is collected again.
 		if err := a.Store.DeleteInventory(r.Context(), d.ID); err != nil {
 			a.fail(w, err)
 			return
 		}
+	}
+	if req.Ownership != nil || req.Assignee != nil {
+		// Ownership and assignee are smart group fields, and policy is
+		// translated differently for personal devices: re-evaluate both.
+		if _, err := a.Svc.ReconcileDevice(r.Context(), d); err != nil {
+			a.Log.Warn("smart groups after device update", "device", d.ID, "err", err)
+		}
+		a.Svc.MembershipChanged(r.Context(), []string{d.ID})
 	}
 	httpx.JSON(w, http.StatusOK, redact(d))
 }

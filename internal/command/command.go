@@ -6,6 +6,7 @@ package command
 import (
 	"encoding/json"
 	"fmt"
+	"regexp"
 
 	"github.com/dmdhrumilmistry/VaanarSena/internal/store"
 )
@@ -121,6 +122,18 @@ var internalByType = func() map[string]Spec {
 	return m
 }()
 
+// NotPersonal lists every command type, user-facing or internal, that must
+// not run on a personally owned device.
+func NotPersonal() []string {
+	var out []string
+	for _, s := range append(append([]Spec{}, Catalogue...), internalCatalogue...) {
+		if !s.Personal {
+			out = append(out, s.Type)
+		}
+	}
+	return out
+}
+
 // Lookup returns the spec for a user-facing command type.
 func Lookup(typ string) (Spec, bool) { s, ok := byType[typ]; return s, ok }
 
@@ -207,6 +220,19 @@ func authorize(role string, spec Spec, d *store.Device, typ string, params Param
 	if d.Status == store.StatusRetired || d.Status == store.StatusWiped {
 		return fmt.Errorf("device is %s", d.Status)
 	}
+	if err := CheckParams(typ, params); err != nil {
+		return err
+	}
+	return checkPlatformParams(d.Platform, typ, params)
+}
+
+// PackageName is what the Linux agent accepts as a package to install or
+// remove: a plain name the package managers take, never an option or a path.
+var PackageName = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9.+_:-]{0,127}$`)
+
+// CheckParams validates the parameters a command needs on every platform. It
+// is used where the target device is not known yet (blueprint steps).
+func CheckParams(typ string, params Params) error {
 	switch typ {
 	case InstallApp, RemoveApp:
 		if params.AppID == "" && params.URL == "" {
@@ -216,13 +242,41 @@ func authorize(role string, spec Spec, d *store.Device, typ string, params Param
 		if params.Script == "" {
 			return fmt.Errorf("run_script requires script")
 		}
-	case Wipe, Lock:
-		if d.Platform == store.PlatformMacOS && params.PIN != "" && !sixDigits(params.PIN) {
+	}
+	return nil
+}
+
+// checkPlatformParams validates parameters against what the target platform's
+// driver needs, so a command that cannot be delivered is refused when it is
+// sent rather than failing on the device later.
+func checkPlatformParams(platform, typ string, params Params) error {
+	switch {
+	case (typ == Wipe || typ == Lock) && platform == store.PlatformMacOS:
+		if params.PIN != "" && !sixDigits(params.PIN) {
 			return fmt.Errorf("pin must be six digits")
+		}
+	case typ == InstallApp && platform == store.PlatformWindows:
+		// The EnterpriseDesktopAppManagement CSP needs all four for an MSI.
+		if params.AppID == "" || params.URL == "" || params.Hash == "" || params.Version == "" {
+			return fmt.Errorf("install_app on Windows requires appId (the MSI product code), url, hash and version")
+		}
+	case typ == RemoveApp && platform == store.PlatformWindows:
+		if params.AppID == "" {
+			return fmt.Errorf("remove_app on Windows requires appId (the MSI product code)")
+		}
+	case typ == RemoveApp && isApple(platform):
+		if params.AppID == "" {
+			return fmt.Errorf("remove_app on Apple devices requires appId (the bundle ID)")
+		}
+	case (typ == InstallApp || typ == RemoveApp) && platform == store.PlatformLinux:
+		if !PackageName.MatchString(params.AppID) {
+			return fmt.Errorf("%s on Linux requires appId to be a package name", typ)
 		}
 	}
 	return nil
 }
+
+func isApple(platform string) bool { return contains(apple, platform) }
 
 func sixDigits(s string) bool {
 	if len(s) != 6 {

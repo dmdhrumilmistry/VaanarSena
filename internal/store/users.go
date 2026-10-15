@@ -3,14 +3,17 @@ package store
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"time"
 )
 
-const userCols = `id, email, name, password_hash, role, disabled, created_at, last_login_at`
+const userCols = `id, email, name, password_hash, role, disabled, created_at, last_login_at, oidc_subject`
 
 func scanUser(row interface{ Scan(...any) error }) (*User, error) {
 	var u User
-	err := row.Scan(&u.ID, &u.Email, &u.Name, &u.PasswordHash, &u.Role, &u.Disabled, &u.CreatedAt, &u.LastLoginAt)
+	err := row.Scan(&u.ID, &u.Email, &u.Name, &u.PasswordHash, &u.Role, &u.Disabled, &u.CreatedAt, &u.LastLoginAt, &u.OIDCSubject)
+	u.SSO = u.OIDCSubject != nil
+	u.HasPassword = u.PasswordHash != "" && u.PasswordHash != NoPassword
 	return &u, notFound(err)
 }
 
@@ -24,6 +27,66 @@ func (s *Store) CreateUser(ctx context.Context, email, name, passwordHash, role 
 func (s *Store) UserByEmail(ctx context.Context, email string) (*User, error) {
 	return scanUser(s.DB.QueryRow(ctx, `SELECT `+userCols+` FROM users WHERE email = lower($1)`, email))
 }
+
+// NoPassword is stored as the password hash of users created by single sign-on.
+// It is not a bcrypt hash, so no password matches it.
+const NoPassword = "!sso"
+
+// CreateSSOUser inserts a user bound to an OpenID Connect identity.
+func (s *Store) CreateSSOUser(ctx context.Context, email, name, role, subject string) (*User, error) {
+	return scanUser(s.DB.QueryRow(ctx, `INSERT INTO users (email, name, password_hash, role, oidc_subject)
+		VALUES (lower($1), $2, $3, $4, $5) RETURNING `+userCols, email, name, NoPassword, role, subject))
+}
+
+// UserByOIDCSubject looks up the user bound to an OpenID Connect identity.
+func (s *Store) UserByOIDCSubject(ctx context.Context, subject string) (*User, error) {
+	return scanUser(s.DB.QueryRow(ctx, `SELECT `+userCols+` FROM users WHERE oidc_subject = $1`, subject))
+}
+
+// BindOIDCSubject binds a user to an OpenID Connect identity. It fails with
+// ErrNotFound if the user is already bound to a different one.
+func (s *Store) BindOIDCSubject(ctx context.Context, id, subject string) error {
+	return s.exec1(ctx, `UPDATE users SET oidc_subject = $2 WHERE id = $1 AND (oidc_subject IS NULL OR oidc_subject = $2)`, id, subject)
+}
+
+// ErrLastAdmin is returned when a change would leave no enabled admin.
+var ErrLastAdmin = errors.New("cannot demote the last admin")
+
+// SetRoleKeepingAnAdmin changes an enabled user's role, refusing with
+// ErrLastAdmin to demote the last enabled admin. An advisory lock serialises
+// concurrent role changes, so two admins demoted at once cannot both pass the
+// check. It returns ErrNotFound if the user is missing or disabled.
+func (s *Store) SetRoleKeepingAnAdmin(ctx context.Context, id, role string) (*User, error) {
+	tx, err := s.DB.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1)`, adminLockID); err != nil {
+		return nil, err
+	}
+	var current string
+	if err := tx.QueryRow(ctx, `SELECT role FROM users WHERE id = $1 AND NOT disabled`, id).Scan(&current); err != nil {
+		return nil, notFound(err)
+	}
+	if current == RoleAdmin && role != RoleAdmin {
+		var others int
+		if err := tx.QueryRow(ctx, `SELECT count(*) FROM users WHERE role = 'admin' AND NOT disabled AND id <> $1`, id).Scan(&others); err != nil {
+			return nil, err
+		}
+		if others == 0 {
+			return nil, ErrLastAdmin
+		}
+	}
+	u, err := scanUser(tx.QueryRow(ctx, `UPDATE users SET role = $2 WHERE id = $1 RETURNING `+userCols, id, role))
+	if err != nil {
+		return nil, err
+	}
+	return u, tx.Commit(ctx)
+}
+
+// adminLockID serialises changes that must keep at least one admin.
+const adminLockID = 0x7661616e6164 // "vaanad"
 
 // UserByID looks up a user by ID.
 func (s *Store) UserByID(ctx context.Context, id string) (*User, error) {
@@ -91,7 +154,7 @@ func (s *Store) UserByAPIToken(ctx context.Context, hash string) (*User, error) 
 	u, err := scanUser(s.DB.QueryRow(ctx, `UPDATE api_tokens t SET last_used_at = now()
 		FROM users u WHERE t.token_hash = $1 AND t.user_id = u.id AND NOT u.disabled
 		AND (t.expires_at IS NULL OR t.expires_at > now())
-		RETURNING u.id, u.email, u.name, u.password_hash, u.role, u.disabled, u.created_at, u.last_login_at`, hash))
+		RETURNING u.id, u.email, u.name, u.password_hash, u.role, u.disabled, u.created_at, u.last_login_at, u.oidc_subject`, hash))
 	return u, err
 }
 

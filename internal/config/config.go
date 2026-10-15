@@ -57,30 +57,57 @@ type Config struct {
 	GoogleAdminSubject string
 	// GoogleCustomerID is the Workspace customer ID, "my_customer" by default.
 	GoogleCustomerID string
+
+	// OIDC single sign-on for the console. Enabled when OIDCIssuer is set.
+	OIDCIssuer       string
+	OIDCClientID     string
+	OIDCClientSecret string
+	OIDCScopes       []string
+	OIDCName         string
+	OIDCGroupsClaim  string
+	// OIDCRoleGroups maps admin, operator and auditor to the provider groups
+	// that grant them (VS_OIDC_ADMIN_GROUPS and so on).
+	OIDCRoleGroups     map[string][]string
+	OIDCAllowedDomains []string
+	// OIDCTrustUnverifiedEmail accepts emails without email_verified: true.
+	OIDCTrustUnverifiedEmail bool
 }
 
 // Load reads configuration from the environment and validates it.
 func Load() (*Config, error) {
 	c := &Config{
-		ListenAddr:            env("VS_LISTEN_ADDR", ":8080"),
-		PublicURL:             strings.TrimRight(env("VS_PUBLIC_URL", "http://localhost:8080"), "/"),
-		DatabaseURL:           env("VS_DATABASE_URL", "postgres://vaanarsena:vaanarsena@localhost:5432/vaanarsena?sslmode=disable"),
-		SecretKey:             os.Getenv("VS_SECRET_KEY"),
-		TLSCertFile:           os.Getenv("VS_TLS_CERT_FILE"),
-		TLSKeyFile:            os.Getenv("VS_TLS_KEY_FILE"),
-		ClientCertHeader:      os.Getenv("VS_CLIENT_CERT_HEADER"),
-		CACertFile:            os.Getenv("VS_CA_CERT_FILE"),
-		CAKeyFile:             os.Getenv("VS_CA_KEY_FILE"),
-		OrgName:               env("VS_ORG_NAME", "VaanarSena"),
-		LogLevel:              env("VS_LOG_LEVEL", "info"),
-		APNsCertFile:          os.Getenv("VS_APNS_CERT_FILE"),
-		APNsKeyFile:           os.Getenv("VS_APNS_KEY_FILE"),
-		APNsTopic:             os.Getenv("VS_APNS_TOPIC"),
-		GoogleCredentialsFile: os.Getenv("VS_GOOGLE_CREDENTIALS_FILE"),
-		GoogleProjectID:       os.Getenv("VS_GOOGLE_PROJECT_ID"),
-		AndroidEnterprise:     os.Getenv("VS_ANDROID_ENTERPRISE"),
-		GoogleAdminSubject:    os.Getenv("VS_GOOGLE_ADMIN_SUBJECT"),
-		GoogleCustomerID:      env("VS_GOOGLE_CUSTOMER_ID", "my_customer"),
+		ListenAddr:               env("VS_LISTEN_ADDR", ":8080"),
+		PublicURL:                strings.TrimRight(env("VS_PUBLIC_URL", "http://localhost:8080"), "/"),
+		DatabaseURL:              env("VS_DATABASE_URL", "postgres://vaanarsena:vaanarsena@localhost:5432/vaanarsena?sslmode=disable"),
+		SecretKey:                os.Getenv("VS_SECRET_KEY"),
+		TLSCertFile:              os.Getenv("VS_TLS_CERT_FILE"),
+		TLSKeyFile:               os.Getenv("VS_TLS_KEY_FILE"),
+		ClientCertHeader:         os.Getenv("VS_CLIENT_CERT_HEADER"),
+		CACertFile:               os.Getenv("VS_CA_CERT_FILE"),
+		CAKeyFile:                os.Getenv("VS_CA_KEY_FILE"),
+		OrgName:                  env("VS_ORG_NAME", "VaanarSena"),
+		LogLevel:                 env("VS_LOG_LEVEL", "info"),
+		APNsCertFile:             os.Getenv("VS_APNS_CERT_FILE"),
+		APNsKeyFile:              os.Getenv("VS_APNS_KEY_FILE"),
+		APNsTopic:                os.Getenv("VS_APNS_TOPIC"),
+		GoogleCredentialsFile:    os.Getenv("VS_GOOGLE_CREDENTIALS_FILE"),
+		GoogleProjectID:          os.Getenv("VS_GOOGLE_PROJECT_ID"),
+		AndroidEnterprise:        os.Getenv("VS_ANDROID_ENTERPRISE"),
+		GoogleAdminSubject:       os.Getenv("VS_GOOGLE_ADMIN_SUBJECT"),
+		GoogleCustomerID:         env("VS_GOOGLE_CUSTOMER_ID", "my_customer"),
+		OIDCIssuer:               os.Getenv("VS_OIDC_ISSUER"),
+		OIDCClientID:             os.Getenv("VS_OIDC_CLIENT_ID"),
+		OIDCClientSecret:         os.Getenv("VS_OIDC_CLIENT_SECRET"),
+		OIDCScopes:               strings.Fields(os.Getenv("VS_OIDC_SCOPES")),
+		OIDCName:                 os.Getenv("VS_OIDC_NAME"),
+		OIDCGroupsClaim:          os.Getenv("VS_OIDC_GROUPS_CLAIM"),
+		OIDCAllowedDomains:       List("VS_OIDC_ALLOWED_DOMAINS"),
+		OIDCTrustUnverifiedEmail: EnvBool("VS_OIDC_TRUST_UNVERIFIED_EMAIL", false),
+		OIDCRoleGroups: map[string][]string{
+			"admin":    List("VS_OIDC_ADMIN_GROUPS"),
+			"operator": List("VS_OIDC_OPERATOR_GROUPS"),
+			"auditor":  List("VS_OIDC_AUDITOR_GROUPS"),
+		},
 	}
 	ttl, err := time.ParseDuration(env("VS_SESSION_TTL", "12h"))
 	if err != nil {
@@ -128,6 +155,17 @@ func env(key, def string) string {
 		return v
 	}
 	return def
+}
+
+// List reads a comma-separated environment variable, dropping empty items.
+func List(key string) []string {
+	var out []string
+	for _, v := range strings.Split(os.Getenv(key), ",") {
+		if v = strings.TrimSpace(v); v != "" {
+			out = append(out, v)
+		}
+	}
+	return out
 }
 
 // EnvBool parses a boolean environment variable.

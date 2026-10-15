@@ -18,6 +18,7 @@ import (
 
 	"github.com/dmdhrumilmistry/VaanarSena/internal/command"
 	"github.com/dmdhrumilmistry/VaanarSena/internal/google"
+	"github.com/dmdhrumilmistry/VaanarSena/internal/mdm"
 	"github.com/dmdhrumilmistry/VaanarSena/internal/store"
 )
 
@@ -28,8 +29,11 @@ type Driver struct {
 	Store    *store.Store
 	Customer string
 	Log      *slog.Logger
-	api      *google.Client
-	mu       sync.Mutex
+	// Svc runs enrollment bootstrap (smart groups, first inventory, blueprint
+	// onboarding) for newly imported devices. Optional.
+	Svc *mdm.Service
+	api *google.Client
+	mu  sync.Mutex
 }
 
 // DefaultBase is the Admin SDK Directory API endpoint.
@@ -87,9 +91,12 @@ func (d *Driver) Sync(ctx context.Context) error {
 			return err
 		}
 		for i := range resp.ChromeOSDevices {
-			if err := d.upsert(ctx, &resp.ChromeOSDevices[i]); err != nil {
+			dev, err := d.upsert(ctx, &resp.ChromeOSDevices[i])
+			if err != nil {
 				d.Log.Warn("chromeos upsert", "device", resp.ChromeOSDevices[i].DeviceID, "err", err)
+				continue
 			}
+			d.bootstrap(ctx, dev)
 		}
 		if resp.NextPageToken == "" {
 			return nil
@@ -98,7 +105,20 @@ func (d *Driver) Sync(ctx context.Context) error {
 	}
 }
 
-func (d *Driver) upsert(ctx context.Context, c *chromeDevice) error {
+// bootstrap runs enrollment bootstrap for dev when it is non-nil. It wakes the
+// device, so it must not be called while d.mu is held.
+func (d *Driver) bootstrap(ctx context.Context, dev *store.Device) {
+	if dev == nil || d.Svc == nil {
+		return
+	}
+	_ = d.Store.Audit(ctx, "device", "device.enroll", dev.ID, map[string]any{"platform": "chromeos", "ownership": dev.Ownership}, "")
+	d.Svc.Bootstrap(ctx, dev)
+}
+
+// upsert stores a device from the Admin SDK. It returns the device when it
+// has just become enrolled (first import, or provisioning finished), which is
+// when it needs bootstrap; otherwise nil.
+func (d *Driver) upsert(ctx context.Context, c *chromeDevice) (*store.Device, error) {
 	status := store.StatusEnrolled
 	switch c.Status {
 	case "DEPROVISIONED":
@@ -112,38 +132,86 @@ func (d *Driver) upsert(ctx context.Context, c *chromeDevice) error {
 		status = store.StatusWiped
 	}
 	if err != nil && !errors.Is(err, store.ErrNotFound) {
-		return err
+		return nil, err
 	}
+	wasEnrolled := err == nil && existing.Status == store.StatusEnrolled
 	now := time.Now()
-	_, err = d.Store.UpsertDevice(ctx, &store.Device{
+	dev, err := d.Store.UpsertDevice(ctx, &store.Device{
 		Platform: store.PlatformChromeOS, Ownership: store.OwnershipCorporate, Status: status,
 		Name: firstNonEmpty(c.AnnotatedAssetID, c.SerialNumber), Serial: c.SerialNumber, Model: c.Model,
 		OSVersion: c.OSVersion, Assignee: c.AnnotatedUser, NativeID: c.DeviceID, EnrolledAt: &now,
 		Facts: facts, PlatformIDs: []byte(fmt.Sprintf(`{"deviceId":%q,"orgUnitPath":%q}`, c.DeviceID, c.OrgUnitPath)),
 	})
-	return err
+	if err != nil {
+		return nil, err
+	}
+	if status == store.StatusEnrolled && !wasEnrolled {
+		return dev, nil
+	}
+	return nil, nil
 }
 
 // Wake executes queued commands through the Admin SDK.
 func (d *Driver) Wake(ctx context.Context, dev *store.Device) error {
+	enrolled, err := d.runQueue(ctx, dev)
+	// A refresh can find that provisioning finished; bootstrap queues and
+	// wakes again, so it runs after the lock is released.
+	d.bootstrap(ctx, enrolled)
+	return err
+}
+
+func (d *Driver) runQueue(ctx context.Context, dev *store.Device) (*store.Device, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	cmds, err := d.Store.PendingCommands(ctx, dev.ID, 50)
 	if err != nil {
-		return err
+		return nil, err
 	}
+	var enrolled *store.Device
 	for _, c := range cmds {
-		resp, err := d.execute(ctx, dev, c)
+		resp, now, err := d.execute(ctx, dev, c)
+		if now != nil {
+			enrolled = now
+		}
 		if err != nil {
 			_ = d.Store.CompleteCommand(ctx, c.ID, dev.ID, store.CmdError, "", err.Error())
 			continue
 		}
 		_ = d.Store.CompleteCommand(ctx, c.ID, dev.ID, store.CmdAcknowledged, resp, "")
 	}
-	return nil
+	return enrolled, nil
 }
 
-func (d *Driver) execute(ctx context.Context, dev *store.Device, c *store.Command) (string, error) {
+// Drain executes commands still queued after their wake-up was missed.
+func (d *Driver) Drain(ctx context.Context) {
+	devs, err := d.Store.DevicesWithQueuedCommands(ctx, store.PlatformChromeOS)
+	if err != nil {
+		d.Log.Warn("chromeos queued commands", "err", err)
+		return
+	}
+	for _, dev := range devs {
+		if err := d.Wake(ctx, dev); err != nil {
+			d.Log.Warn("chromeos drain", "device", dev.ID, "err", err)
+		}
+	}
+}
+
+// execute runs one command. The device it returns is non-nil when a refresh
+// found the device newly enrolled.
+func (d *Driver) execute(ctx context.Context, dev *store.Device, c *store.Command) (string, *store.Device, error) {
+	if c.Type == command.Refresh {
+		var cd chromeDevice
+		if err := d.api.Do(ctx, http.MethodGet, "/devices/chromeos/"+url.PathEscape(dev.NativeID)+"?projection=BASIC", nil, &cd); err != nil {
+			return "", nil, err
+		}
+		enrolled, err := d.upsert(ctx, &cd)
+		return "", enrolled, err
+	}
+	out, err := d.executeAction(ctx, dev, c)
+	return out, nil, err
+}
+
+func (d *Driver) executeAction(ctx context.Context, dev *store.Device, c *store.Command) (string, error) {
 	id := url.PathEscape(dev.NativeID)
 	issue := func(typ string) (string, error) {
 		var out map[string]any
@@ -157,12 +225,6 @@ func (d *Driver) execute(ctx context.Context, dev *store.Device, c *store.Comman
 		return d.api.Do(ctx, http.MethodPost, "/devices/chromeos/"+id+"/action", body, nil)
 	}
 	switch c.Type {
-	case command.Refresh:
-		var cd chromeDevice
-		if err := d.api.Do(ctx, http.MethodGet, "/devices/chromeos/"+id+"?projection=BASIC", nil, &cd); err != nil {
-			return "", err
-		}
-		return "", d.upsert(ctx, &cd)
 	case command.Restart:
 		return issue("REBOOT")
 	case command.Lock:
@@ -195,6 +257,7 @@ func (d *Driver) Run(ctx context.Context, every time.Duration) {
 		if err := d.Sync(ctx); err != nil && ctx.Err() == nil {
 			d.Log.Warn("chromeos sync", "err", err)
 		}
+		d.Drain(ctx)
 		select {
 		case <-ctx.Done():
 			return

@@ -38,8 +38,18 @@ around it. The platforms enforce the same boundary on their side:
 - Windows personal devices receive only sign-in (`DeviceLock`) policies.
 - The Linux agent runs in inventory-only mode and refuses commands locally too.
 
+Changing a device's ownership re-evaluates its smart groups and re-pushes its
+policy at once, so a device made personal stops receiving company-owned-only
+configuration (and the Linux agent removes what it had applied). Making a
+device personal is one transaction that also removes the serial number and
+platform inventory collected while it was corporate, and cancels pending
+commands not permitted on personal devices. Every command is queued only if
+the device still has the ownership it was authorised against, so a command
+authorised a moment before the change cannot slip in after it.
+
 Inventory collected from personal devices excludes serial numbers, IMEI and
-hardware addresses. Software inventory is limited the same way, on the
+hardware addresses, so webhook events about personal devices carry none
+either. Software inventory is limited the same way, on the
 server: personal Linux and Windows devices report no apps or services (anything
 a modified client sends is discarded), Apple devices report managed apps only,
 and Android reports only the work profile. Changing a device to personal
@@ -54,8 +64,26 @@ deletes the software already stored for it.
   immediately. Cookie-authenticated writes also need `X-Requested-With`.
 - API tokens: 256-bit random, stored as SHA-256 hashes, optionally expiring.
 - Roles: `auditor` (read only), `operator` (non-destructive commands,
-  enrollment), `admin` (wipe, scripts, policy, users). The last admin cannot
-  be demoted, disabled or deleted.
+  enrollment), `admin` (wipe, scripts, policy, users, webhooks). The last
+  admin cannot be demoted, disabled or deleted, by hand or by an SSO group
+  mapping.
+- Single sign-on (optional, [sso.md](sso.md)): OpenID Connect authorization
+  code flow with PKCE. `state`, `nonce` and the PKCE verifier live in an
+  encrypted, `HttpOnly`, ten-minute cookie. The ID token's signature, issuer,
+  audience, `azp`, expiry and nonce are verified locally against the
+  provider's published keys. Users are bound to the provider's issuer and
+  subject after their first sign-in; an unverified email cannot link to an
+  existing account. The post-sign-in redirect only goes to paths on this
+  site.
+
+## Webhooks
+
+[Webhooks](webhooks.md) are admin-only. Each request is signed with
+HMAC-SHA256 over a timestamp and the body, with a per-webhook secret stored
+encrypted with `VS_SECRET_KEY` and shown only at creation or rotation.
+Redirects are not followed, and URLs may not embed credentials. Webhook URLs
+are called from the server and may point at internal addresses; restrict
+outbound traffic at the network if that matters in your environment.
 
 ## Audit log
 
@@ -72,6 +100,8 @@ the table. `run_script` records the full script body.
 - Store `VS_SECRET_KEY`, the APNs key and the Google service account in a
   secret manager.
 - Use API tokens with an expiry for automation.
+- With SSO, map provider groups to roles so access follows your directory,
+  and keep one admin with a password for emergencies.
 - Monitor the audit log for `command.denied`, `auth.login_failed` and `*.enroll_denied`.
 
 ## Reporting vulnerabilities

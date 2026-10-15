@@ -374,10 +374,25 @@ func (d *Driver) Run(ctx context.Context, every time.Duration) {
 		if err := d.Sync(ctx); err != nil && ctx.Err() == nil {
 			d.Log.Warn("android sync", "err", err)
 		}
+		d.Drain(ctx)
 		select {
 		case <-ctx.Done():
 			return
 		case <-t.C:
+		}
+	}
+}
+
+// Drain executes commands still queued after their wake-up was missed.
+func (d *Driver) Drain(ctx context.Context) {
+	devs, err := d.Store.DevicesWithQueuedCommands(ctx, store.PlatformAndroid)
+	if err != nil {
+		d.Log.Warn("android queued commands", "err", err)
+		return
+	}
+	for _, dev := range devs {
+		if err := d.Wake(ctx, dev); err != nil {
+			d.Log.Warn("android drain", "device", dev.ID, "err", err)
 		}
 	}
 }

@@ -395,6 +395,7 @@ func (m *Manager) reloadGoogle(ctx context.Context) {
 	}
 	m.chromeD, m.chromeSrc, m.chromeErr = cdrv, cSrc, errString(cErr)
 	if cdrv != nil {
+		cdrv.Svc = m.Svc
 		m.Svc.Register(cdrv)
 		c, cancel := context.WithCancel(m.root)
 		m.chromeX = cancel

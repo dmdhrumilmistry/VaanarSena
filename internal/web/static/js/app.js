@@ -1,5 +1,5 @@
 // VaanarSena console shell: sidebar, top bar, command palette, routing and sign-in.
-import { h, api, state, icon, go, link, errorNotice, can, menu, skeleton, initials, platformLabel } from "./core.js";
+import { h, api, state, icon, go, link, errorNotice, notice, can, menu, skeleton, initials, platformLabel } from "./core.js";
 import * as dash from "./views/dashboard.js";
 import * as devices from "./views/devices.js";
 import * as software from "./views/software.js";
@@ -34,7 +34,7 @@ const ROUTES = [
   [/^\/users$/, admin.users],
   [/^\/audit$/, admin.audit],
   [/^\/account$/, admin.account],
-  [/^\/settings\/(platforms|server)$/, settings.view],
+  [/^\/settings\/(platforms|webhooks|server)$/, settings.view],
 ];
 
 // ---------- theme ----------
@@ -218,6 +218,34 @@ document.addEventListener("keydown", (e) => {
 });
 
 // ---------- sign in ----------
+// Why single sign-on failed, keyed by the code the server puts in ?sso_error=.
+const SSO_ERRORS = {
+  denied: "Sign-in was cancelled or refused by your identity provider.",
+  expired: "The sign-in took too long or was started in another tab. Try again.",
+  invalid: "The identity provider's answer could not be verified. Try again, or ask an administrator to check the server log.",
+  unavailable: "The identity provider could not be reached. Try again in a moment.",
+  no_access: "Your account is not in a group that grants access to this console. Ask an administrator.",
+  not_provisioned: "There is no console account for your email address. Ask an administrator to add you.",
+  domain: "Your email domain is not allowed to sign in here.",
+  unverified: "Your identity provider has not verified your email address.",
+  disabled: "Your console account is disabled. Ask an administrator.",
+  conflict: "Your email address is already linked to a different single sign-on account. Ask an administrator.",
+  no_email: "Your identity provider did not share your email address. Ask an administrator to check the single sign-on setup.",
+};
+
+// ssoBlock fills host with the single sign-on button when the server offers it,
+// and makes the password button secondary so SSO reads as the way in.
+async function ssoBlock(host, passwordBtn) {
+  let p;
+  try { p = await api("GET", "/auth/providers"); } catch { return; }
+  if (!p.oidc || !p.oidc.enabled) return;
+  const here = location.pathname === "/login" ? "/" : location.pathname + location.search;
+  host.replaceChildren(
+    h("a", { class: "btn primary sso-btn", href: "/api/v1/auth/oidc/start?next=" + encodeURIComponent(here) }, icon("lock"), "Sign in with " + p.oidc.name),
+    h("div", { class: "divider-label" }, "or use a password"));
+  passwordBtn.classList.remove("primary");
+}
+
 function loginView() {
   const email = h("input", { class: "input", type: "email", autocomplete: "username", required: true, id: "login-email" });
   const pw = h("input", { class: "input", type: "password", autocomplete: "current-password", required: true, id: "login-pw" });
@@ -233,11 +261,16 @@ function loginView() {
     h("div", { class: "field" }, h("label", { for: "login-email" }, "Work email"), email),
     h("div", { class: "field" }, h("label", { for: "login-pw" }, "Password"), pw),
     err, btn);
+  const ssoErr = new URLSearchParams(location.search).get("sso_error");
+  const sso = h("div", { class: "sso" });
+  ssoBlock(sso, btn);
   return h("div", { class: "login" },
     h("div", { class: "form-side" },
       h("div", { class: "form-wrap" },
         h("div", { class: "mark" }, h("img", { src: "/favicon.svg", alt: "" }), h("span", {}, "VaanarSena")),
         h("div", { class: "intro" }, h("h1", {}, "Sign in to your console"), h("p", {}, "Use the account your administrator created for you.")),
+        ssoErr ? h("div", { role: "alert" }, notice("bad", SSO_ERRORS[ssoErr] || "Single sign-on failed. Try again.")) : null,
+        sso,
         form,
         h("p", { class: "fine" }, "Forgot your password? Ask an administrator to set a new one under Users."))),
     h("div", { class: "sky" },
@@ -260,6 +293,9 @@ export async function render() {
   }
   if (seq !== renderSeq) return;
   if (!state.me) { root.replaceChildren(loginView()); document.title = "Sign in - VaanarSena"; return; }
+  // The sign-in page has its own address for single sign-on errors; once
+  // signed in, it is the overview.
+  if (location.pathname === "/login") history.replaceState(null, "", "/");
   if (!state.info) {
     try {
       [state.info, state.catalogue] = await Promise.all([api("GET", "/info"), api("GET", "/commands/catalogue").then((c) => c.commands)]);

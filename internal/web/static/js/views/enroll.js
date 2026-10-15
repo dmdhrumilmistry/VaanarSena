@@ -9,8 +9,8 @@ const PLATFORMS = [
 ];
 
 const OWNERSHIP = {
-  corporate: { label: "Company-owned", icon: "shield", desc: "Full management: policies, apps, lock, restart and erase.",
-    points: ["Policies and apps", "Lock, restart and erase", "Hardware identifiers"] },
+  corporate: { label: "Company-owned", icon: "shield", desc: "Full management: policies, apps and remote actions such as restart, lock and erase where the platform supports them.",
+    points: ["Policies and apps", "Restart, plus lock and erase where supported", "Hardware identifiers"] },
   personal: { label: "Personal (BYOD)", icon: "account", desc: "Work data only. VaanarSena cannot see personal data, collect hardware IDs, lock or erase the device.",
     points: ["Separate work area", "No lock or erase", "No access to personal data"] },
 };
