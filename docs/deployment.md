@@ -14,7 +14,7 @@ cp deploy/.env.example deploy/.env
 docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d
 ```
 
-The image is `ghcr.io/dmdhrumilmistry/vaanarsena`. It runs as a non-root user
+The image is `docker.io/dmdhrumilmistry/vaanarsena`. It runs as a non-root user
 on a distroless base and listens on 8080. The Linux agent binary is included
 at `/usr/local/share/vaanarsena/vaanarsena-agent`.
 

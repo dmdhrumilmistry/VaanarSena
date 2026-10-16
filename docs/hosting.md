@@ -1,7 +1,7 @@
 # Hosting VaanarSena
 
 VaanarSena is one stateless Go server plus PostgreSQL. Pick the shape that
-fits; all of them run the same image, `ghcr.io/dmdhrumilmistry/vaanarsena`.
+fits; all of them run the same image, `docker.io/dmdhrumilmistry/vaanarsena`.
 
 | Option | Good for | TLS | Client certificates (Windows, Linux) |
 |---|---|---|---|

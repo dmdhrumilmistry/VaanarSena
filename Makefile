@@ -1,6 +1,6 @@
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -s -w -X main.version=$(VERSION)
-IMAGE ?= ghcr.io/dmdhrumilmistry/vaanarsena
+IMAGE ?= docker.io/dmdhrumilmistry/vaanarsena
 CLI_PLATFORMS := linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64
 
 .PHONY: build agents cli test e2e lint image clean

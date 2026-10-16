@@ -164,7 +164,7 @@ platform notes, security for anything BYOD).
 
 ## Release
 
-- Push to `main` publishes `ghcr.io/dmdhrumilmistry/vaanarsena:main`; a `vX.Y.Z`
+- Push to `main` publishes `docker.io/dmdhrumilmistry/vaanarsena:main`; a `vX.Y.Z`
   tag publishes the versioned image, `:latest` and the agent binaries.
 - Then bump `version` and `appVersion` in the chart in
   github.com/dmdhrumilmistry/helm-charts and update its README if values changed.

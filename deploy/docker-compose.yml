@@ -23,7 +23,7 @@ services:
       retries: 20
 
   vaanarsena:
-    image: ${VS_IMAGE:-ghcr.io/dmdhrumilmistry/vaanarsena:latest}
+    image: ${VS_IMAGE:-docker.io/dmdhrumilmistry/vaanarsena:latest}
     build:
       context: ..
     restart: unless-stopped
