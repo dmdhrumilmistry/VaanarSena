@@ -1,7 +1,10 @@
 name: release
 
-# main publishes ghcr.io/<owner>/vaanarsena:main; a v* tag publishes the
-# versioned image (and :latest) plus Linux agent binaries on the release.
+# main publishes docker.io/<owner>/vaanarsena:main on Docker Hub; a v* tag
+# publishes the versioned image (and :latest) plus Linux agent binaries on the
+# release. Needs the DOCKERHUB_USERNAME and DOCKERHUB_TOKEN secrets (a Docker
+# Hub access token with Read & Write scope); DOCKERHUB_IMAGE (a variable)
+# overrides the image name.
 on:
   push:
     branches: [main]
@@ -9,12 +12,22 @@ on:
 
 permissions:
   contents: write
-  packages: write
 
 jobs:
   image:
     runs-on: ubuntu-latest
+    env:
+      IMAGE: ${{ vars.DOCKERHUB_IMAGE || format('docker.io/{0}/vaanarsena', github.repository_owner) }}
     steps:
+      - name: Check Docker Hub credentials
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          if [ -z "$DOCKERHUB_USERNAME" ] || [ -z "$DOCKERHUB_TOKEN" ]; then
+            echo "::error::Set the DOCKERHUB_USERNAME and DOCKERHUB_TOKEN repository secrets to publish the image."
+            exit 1
+          fi
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
@@ -22,13 +35,12 @@ jobs:
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
       - id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ github.repository_owner }}/vaanarsena
+          images: ${{ env.IMAGE }}
           tags: |
             type=ref,event=branch
             type=sha,format=short
