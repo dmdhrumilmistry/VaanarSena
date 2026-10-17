@@ -23,11 +23,13 @@ Apple devices are woken through Apple's push service (APNs), which needs an
     **MDM vendor certificate** issued by Apple. Apple gives that certificate
     only to organizations (Apple Developer Program enrolled as an
     organization, with the "MDM CSR" capability requested from Apple), and
-    excludes individuals and personal use. Community signing services apply
-    the same rule.
+    excludes individuals and personal use, including test setups. Community
+    signing services apply the same rule (see
+    [Community signing services](#community-signing-services)).
 
     - Uploading the unsigned `vaanarsena-push.csr` directly fails with
-      "Invalid Certificate Signing Request".
+      "Invalid Certificate Signing Request". The same message appears when
+      the signed request is in the wrong format or signed with the wrong key.
     - Your domain's TLS certificate (for example Let's Encrypt) cannot sign
       it: Apple checks the signature against its own vendor certificate
       chain.
@@ -40,10 +42,13 @@ Apple devices are woken through Apple's push service (APNs), which needs an
 
 1. **Create a signing request.** In Settings > Platforms > Apple, choose
    **Create signing request** and download `vaanarsena-push.csr`. VaanarSena
-   generates the private key and keeps it; it never leaves the server.
+   generates the private key and keeps it; it never leaves the server. The
+   server keeps only the key of the latest request: do not create another
+   one until you have saved the certificate for this one.
 2. **Have it signed and upload it to Apple.** Sign the request with your
-   organization's MDM vendor certificate (see above). Upload the signed
-   request at [identity.apple.com](https://identity.apple.com) with your
+   organization's MDM vendor certificate (see
+   [Signing the request](#signing-the-request)). Upload the signed
+   request at [identity.apple.com](https://identity.apple.com/pushcert) with your
    organization's Apple ID (not a personal one: renewals need the same Apple
    ID) and download the push certificate.
 3. **Upload the certificate.** Choose the `.pem` or Apple's `.cer` file and
@@ -55,6 +60,86 @@ key** in step 3 instead of generating a request.
 The certificate lasts one year. **Renew it with the same Apple ID**: a new
 certificate with a different push topic orphans every enrolled device. The
 server logs a warning 30 days before it expires.
+
+### Signing the request
+
+Apple describes the format in
+[Setting up push notifications for your device management customers](https://developer.apple.com/documentation/devicemanagement/setting-up-push-notifications-for-your-device-management-customers).
+You need:
+
+- `mdm.cer` and `vendor.key`: your "MDM Vendor CSR Signing Certificate"
+  from the Apple Developer portal and the key you created it with.
+- `AppleWWDRCAG3.cer` from
+  [apple.com/certificateauthority](https://www.apple.com/certificateauthority/)
+  and `AppleIncRootCertificate.cer` from
+  [apple.com/appleca](https://www.apple.com/appleca/).
+
+Check that the key belongs to the certificate (both lines must match):
+
+```bash
+openssl x509 -inform der -in mdm.cer -noout -modulus | openssl md5
+openssl rsa -in vendor.key -noout -modulus | openssl md5
+```
+
+Then build the signed request. It is a property list with the request (DER,
+base64), the certificate chain (PEM: vendor certificate, WWDR intermediate,
+Apple root, in that order) and a SHA-256 RSA signature of the DER request,
+itself base64-encoded:
+
+```bash
+openssl req -in vaanarsena-push.csr -outform der -out push.der
+openssl dgst -sha256 -sign vendor.key -out push.sig push.der
+for c in mdm.cer AppleWWDRCAG3.cer AppleIncRootCertificate.cer; do
+  openssl x509 -inform der -in "$c"
+done > chain.pem
+openssl verify -CAfile chain.pem chain.pem   # the chain must reach Apple's root
+
+cat > push.plist <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>PushCertRequestCSR</key>
+  <string>$(openssl base64 -A -in push.der)</string>
+  <key>PushCertCertificateChain</key>
+  <string>$(cat chain.pem)</string>
+  <key>PushCertSignature</key>
+  <string>$(openssl base64 -A -in push.sig)</string>
+</dict>
+</plist>
+EOF
+openssl base64 -A -in push.plist > vaanarsena-push-signed.b64
+```
+
+Upload `vaanarsena-push-signed.b64` to Apple. Keep `vendor.key` private and
+reuse it every year to sign the renewal request.
+
+### Community signing services
+
+Services such as [mdmcert.download](https://mdmcert.download) sign push
+requests for organizations that have no vendor certificate of their own.
+VaanarSena does not support mdmcert.download today:
+
+- **Organizations only.** Registration asks for your organization, title,
+  telephone and organization address, and only an organization email
+  address is accepted: free and disposable addresses (Gmail and similar)
+  are blocked to prevent individual use and personal devices. You must
+  accept the service's terms, which are shown only after registering.
+- **No public client protocol.** Its instructions describe the steps only at
+  a high level: the MDM server creates an encryption certificate and the push
+  request and submits them to the service's web API, the signed request comes
+  back encrypted by email, and the MDM server decrypts it for you to upload
+  to Apple. The API endpoint, API key, request and reply formats and the
+  decryption step are not documented, and the service expects an MDM that
+  already has this client built in. VaanarSena does not, and will not copy
+  one from another MDM.
+- **Revocable.** The service warns that Apple can revoke certificates
+  issued this way at any time.
+
+There is no route for individuals or test setups without an organization:
+APNs is the only way to wake an Apple device, so without a push certificate
+an enrolled device never checks in. To test without Apple, use Windows,
+Linux, ChromeOS or Android devices.
 
 **Company-owned devices:** create an Apple, company-owned enrollment, open
 the link in Safari on the device and install the profile from Settings.
