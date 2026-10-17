@@ -327,3 +327,59 @@ func TestSSORequiresVerifiedEmailToLink(t *testing.T) {
 		t.Fatal("TrustUnverifiedEmail did not allow the sign-in")
 	}
 }
+
+// TestPasswordLoginRestricted: with password sign-in off, only break-glass
+// accounts may use a password; the refusal comes only after the password is
+// verified (no enumeration of allowed emails), and API tokens keep working.
+func TestPasswordLoginRestricted(t *testing.T) {
+	e := setup(t)
+	ctx := context.Background()
+	hash, _ := auth.HashPassword("operator-password-1")
+	if _, err := e.st.CreateUser(ctx, "op@e2e.test", "", hash, store.RoleOperator); err != nil {
+		t.Fatal(err)
+	}
+	var tok struct{ Token string }
+	e.call("POST", "/api/v1/api-tokens", `{"name":"automation"}`, 201, &tok)
+
+	e.api.Auth.Password = &auth.PasswordPolicy{Allow: map[string]bool{"admin@e2e.test": true}}
+	var providers struct {
+		Password           bool
+		PasswordRestricted bool
+	}
+	e.call("GET", "/api/v1/auth/providers", "", 200, &providers)
+	if providers.Password || !providers.PasswordRestricted {
+		t.Fatalf("providers = %+v", providers)
+	}
+
+	adminToken := e.token
+	e.token = ""
+	e.call("POST", "/api/v1/auth/login", `{"email":"op@e2e.test","password":"operator-password-1"}`, 403, nil)
+	// A wrong password gets the usual answer, so the 403 reveals nothing to
+	// someone who does not already know the password.
+	e.call("POST", "/api/v1/auth/login", `{"email":"op@e2e.test","password":"wrong-password-12"}`, 401, nil)
+	e.call("POST", "/api/v1/auth/login", `{"email":"nobody@e2e.test","password":"wrong-password-12"}`, 401, nil)
+	e.call("POST", "/api/v1/auth/login", `{"email":"ADMIN@e2e.test","password":"e2e-admin-password"}`, 200, nil)
+
+	// No break-glass account at all: the admin is refused too, but its API token works.
+	e.api.Auth.Password = &auth.PasswordPolicy{}
+	e.call("POST", "/api/v1/auth/login", `{"email":"admin@e2e.test","password":"e2e-admin-password"}`, 403, nil)
+	e.token = tok.Token
+	e.call("GET", "/api/v1/auth/me", "", 200, nil)
+
+	e.token = adminToken
+	var audit struct{ Entries []store.AuditEntry }
+	e.call("GET", "/api/v1/audit?limit=20", "", 200, &audit)
+	refused := 0
+	for _, a := range audit.Entries {
+		if a.Action == "auth.login_failed" && strings.Contains(string(a.Details), "password sign-in disabled") {
+			refused++
+		}
+	}
+	if refused != 2 {
+		t.Errorf("audited refusals = %d, want 2", refused)
+	}
+	var me store.User
+	if err := e.st.DB.QueryRow(ctx, `SELECT last_login_at IS NULL FROM users WHERE email = 'op@e2e.test'`).Scan(&me.Disabled); err != nil || !me.Disabled {
+		t.Errorf("a refused sign-in updated last_login_at")
+	}
+}

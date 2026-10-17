@@ -33,6 +33,15 @@ func (a *API) login(w http.ResponseWriter, r *http.Request) {
 		_ = a.Store.Audit(r.Context(), strings.ToLower(req.Email), "auth.login_failed", "", nil, ip)
 		httpx.Error(w, http.StatusUnauthorized, err.Error())
 		return
+	case errors.Is(err, auth.ErrPasswordLoginDisabled):
+		_ = a.Store.Audit(r.Context(), strings.ToLower(req.Email), "auth.login_failed", "",
+			map[string]any{"method": "password", "reason": "password sign-in disabled"}, ip)
+		msg := "Password sign-in is turned off for this account."
+		if a.OIDC != nil {
+			msg += " Sign in with " + a.OIDC.Config.Name + "."
+		}
+		httpx.Error(w, http.StatusForbidden, msg)
+		return
 	case err != nil:
 		a.fail(w, err)
 		return

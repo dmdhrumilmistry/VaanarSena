@@ -22,7 +22,13 @@ func (a *API) authProviders(w http.ResponseWriter, r *http.Request) {
 	if a.OIDC != nil {
 		oidc["name"] = a.OIDC.Config.Name
 	}
-	httpx.JSON(w, http.StatusOK, map[string]any{"password": true, "oidc": oidc})
+	// password: anyone may use a password. passwordRestricted: only break-glass
+	// accounts may (the console then tucks the form away).
+	httpx.JSON(w, http.StatusOK, map[string]any{
+		"password":           a.Auth.Password == nil || a.Auth.Password.Enabled,
+		"passwordRestricted": a.Auth.Password.Restricted(),
+		"oidc":               oidc,
+	})
 }
 
 func (a *API) oidcStart(w http.ResponseWriter, r *http.Request) {

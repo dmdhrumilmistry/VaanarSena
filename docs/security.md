@@ -102,6 +102,8 @@ the table. `run_script` records the full script body.
 - Use API tokens with an expiry for automation.
 - With SSO, map provider groups to roles so access follows your directory,
   and keep one admin with a password for emergencies.
+- With SSO, turn off password sign-in (`VS_PASSWORD_LOGIN=false`) and keep
+  one break-glass admin with a strong password in `VS_PASSWORD_LOGIN_ALLOW`.
 - Monitor the audit log for `command.denied`, `auth.login_failed` and `*.enroll_denied`.
 
 ## Reporting vulnerabilities

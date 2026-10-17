@@ -111,6 +111,7 @@ node tour.js out dark 1440
 node tour.js out light 390
 node flows.js                           # drive real flows, verify through the API
 node guard.js                           # unsaved-changes guard on browser back
+node signin-restricted.js out           # sign-in with VS_PASSWORD_LOGIN=false (start the server that way; see the file)
 ```
 
 - `start.sh` runs PostgreSQL in container `vs-dev-pg` (port 55431, kept

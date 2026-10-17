@@ -2,8 +2,9 @@
 
 People can sign in to the console with your identity provider (Entra ID,
 Okta, Google Workspace, Keycloak, Authentik or any other OpenID Connect
-provider). Password sign-in keeps working alongside it, so an admin with a
-password can always get in if the provider is down or misconfigured.
+provider). By default password sign-in keeps working alongside it; you can
+turn it off for everyone except named break-glass admins (see
+[Turn off password sign-in](#turn-off-password-sign-in)).
 
 ## How it works
 
@@ -85,6 +86,44 @@ In both modes:
 
 Accounts created by SSO have no password. An admin can set one under Users
 (for emergency access); the Users page shows how each person signs in.
+
+## Google
+
+Google is an OpenID Connect provider. In Google Cloud Console > APIs &
+Services > Credentials, create an OAuth client ID of type *Web application*
+with the redirect URI above, then:
+
+```bash
+VS_OIDC_ISSUER=https://accounts.google.com
+VS_OIDC_CLIENT_ID=<client id>.apps.googleusercontent.com
+VS_OIDC_CLIENT_SECRET=<client secret>
+VS_OIDC_NAME=Google
+VS_OIDC_ALLOWED_DOMAINS=example.com      # optional: only your Workspace domain
+```
+
+Google does not put group membership in its ID tokens, so leave the
+`VS_OIDC_*_GROUPS` variables unset: create each person under Users with their
+role, and Google signs them in ("existing users only" above). Google marks
+addresses it has verified with `email_verified`, so linking works without
+`VS_OIDC_TRUST_UNVERIFIED_EMAIL`.
+
+## Turn off password sign-in
+
+```bash
+VS_PASSWORD_LOGIN=false
+VS_PASSWORD_LOGIN_ALLOW=breakglass-admin@example.com   # comma-separated
+```
+
+- Only the listed accounts can still sign in with a password; keep at least
+  one admin there with a strong password, for when the identity provider is
+  down or misconfigured. The sign-in page hides the password form behind an
+  "Administrator sign-in with a password" link.
+- Everyone else gets "Password sign-in is turned off for this account" (HTTP
+  403), audited as `auth.login_failed`. That answer is given only after the
+  password has been checked, so it does not reveal which emails are allowed.
+- API tokens are not affected: automation and `vsctl` keep working.
+- The server refuses to start with `VS_PASSWORD_LOGIN=false` and neither
+  single sign-on nor an allowed account, which would lock everyone out.
 
 ## When sign-in fails
 
