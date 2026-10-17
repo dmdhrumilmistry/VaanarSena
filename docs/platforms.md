@@ -2,7 +2,9 @@
 
 Windows and Linux work out of the box. Apple, Android and ChromeOS need
 credentials from Apple or Google, which you connect in the console under
-**Settings > Platforms**. Credentials are stored encrypted with the server key
+**Settings > Platforms**. Apple and Android also need Apple's or Google's
+approval of your **organization**, which individuals and personal use do not
+get; read the warning in each section before you start. Credentials are stored encrypted with the server key
 and take effect immediately, with no restart.
 
 ![Settings > Platforms](assets/screens/platforms.png)
@@ -16,14 +18,34 @@ Every platform can also be configured with environment variables instead (see
 Apple devices are woken through Apple's push service (APNs), which needs an
 **MDM push certificate** for your organization.
 
+!!! warning "Before you start: Apple only issues this to organizations"
+    Apple's push portal accepts a request only when it is signed with an
+    **MDM vendor certificate** issued by Apple. Apple gives that certificate
+    only to organizations (Apple Developer Program enrolled as an
+    organization, with the "MDM CSR" capability requested from Apple), and
+    excludes individuals and personal use. Community signing services apply
+    the same rule.
+
+    - Uploading the unsigned `vaanarsena-push.csr` directly fails with
+      "Invalid Certificate Signing Request".
+    - Your domain's TLS certificate (for example Let's Encrypt) cannot sign
+      it: Apple checks the signature against its own vendor certificate
+      chain.
+    - Hosted MDM products sign requests with their own vendor certificate.
+      A self-hosted VaanarSena has no vendor of its own, so the organization
+      running it needs one.
+
+    Without a push certificate, Apple devices cannot be managed. Windows,
+    Linux and ChromeOS are not affected.
+
 1. **Create a signing request.** In Settings > Platforms > Apple, choose
    **Create signing request** and download `vaanarsena-push.csr`. VaanarSena
    generates the private key and keeps it; it never leaves the server.
-2. **Have it signed and upload it to Apple.** The request must be signed with
-   an MDM vendor certificate (Apple Developer Enterprise Program, "MDM CSR"
-   capability). Upload the signed request at
-   [identity.apple.com](https://identity.apple.com) with your organization's
-   Apple ID and download the push certificate.
+2. **Have it signed and upload it to Apple.** Sign the request with your
+   organization's MDM vendor certificate (see above). Upload the signed
+   request at [identity.apple.com](https://identity.apple.com) with your
+   organization's Apple ID (not a personal one: renewals need the same Apple
+   ID) and download the push certificate.
 3. **Upload the certificate.** Choose the `.pem` or Apple's `.cer` file and
    **Save certificate**. Apple enrollment is on as soon as it saves.
 
@@ -91,6 +113,33 @@ refused when sent.
 
 Uses Google's **Android Management API**. You need a Google Cloud project with
 a service account, then an Android Enterprise bound to it.
+
+!!! warning "Before you start: Google must approve your project"
+    Google restricts the Android Management API to commercial EMM providers
+    with a business justification (see Google's
+    [permissible usage](https://developers.google.com/android/management/permissible-usage)
+    page). Solutions used only in-house, and personal use, are not permitted.
+
+    - **New projects can enroll no devices** until Google approves them.
+      Every enrollment fails on the device, whatever the mode: a work
+      profile shows "your organization has reached its usage limits", and a
+      fully managed device may show "your IT admin doesn't allow this policy".
+      VaanarSena and the device are not at fault; the API key and the
+      enterprise connection still work, so nothing looks wrong until the
+      first enrollment.
+    - **Request quota** with the form linked from the permissible usage page
+      (an initial quota of up to 500 devices needs a full business
+      justification; Google grants quota to at most two projects per
+      developer). Approval takes weeks. Do this before planning a rollout.
+    - **Use organization accounts throughout**, not personal Gmail accounts:
+      own the Cloud project from your organization's Google account, and sign
+      up for the Android Enterprise with a work account (a Google Workspace
+      admin, or a work email verified with Google; Google's sign-up may
+      refuse a personal address). The account that signs up becomes the
+      enterprise's admin, so it should belong to the organization, not to
+      whoever set it up.
+    - Hosted MDM products enroll through their own approved project. A
+      self-hosted VaanarSena uses yours, so the approval has to be yours.
 
 ### 1. Create the service account
 
