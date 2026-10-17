@@ -89,9 +89,22 @@ Accounts created by SSO have no password. An admin can set one under Users
 
 ## Google
 
-Google is an OpenID Connect provider. In Google Cloud Console > APIs &
-Services > Credentials, create an OAuth client ID of type *Web application*
-with the redirect URI above, then:
+Google is an OpenID Connect provider. Create the client in a Cloud project
+owned by your organization's Google account, not a personal Gmail account:
+whoever owns the project controls sign-in to VaanarSena. The OAuth client
+can only be created in the console (`gcloud` cannot create web clients).
+
+1. In the [Google Cloud console](https://console.cloud.google.com), pick the
+   project, then **Google Auth Platform**:
+    - **Branding**: app name (for example "VaanarSena") and a support email.
+    - **Audience**: *Internal* if everyone signs in with your Google Workspace
+      domain. Otherwise *External*; while it is in *Testing*, only the
+      accounts listed under **Test users** can sign in, so add them or choose
+      **Publish app** (VaanarSena asks only for `openid email profile`, which
+      needs no Google verification).
+    - **Clients > Create client**: type *Web application*, authorized
+      redirect URI `https://<your host>/api/v1/auth/oidc/callback`.
+2. Copy the client ID and secret into the server's configuration:
 
 ```bash
 VS_OIDC_ISSUER=https://accounts.google.com

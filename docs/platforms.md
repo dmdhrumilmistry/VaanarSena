@@ -143,13 +143,50 @@ a service account, then an Android Enterprise bound to it.
 
 ### 1. Create the service account
 
-1. In the [Google Cloud console](https://console.cloud.google.com), create or
-   pick a project and enable the **Android Management API**.
-2. Under **IAM & Admin > Service accounts**, create a service account and
-   grant it the **Android Management User** role.
-3. On the service account, **Keys > Add key > JSON**, and download the file.
-4. In VaanarSena, **Settings > Platforms > Google service account**: choose the
-   key file (the project ID is read from it) and **Save key**.
+Sign in to `gcloud` with your organization's account (the project owner),
+then create the project, the service account and its key. Replace the
+placeholders; project IDs are global, so pick a unique one.
+
+```bash
+gcloud auth login admin@example.com
+PROJECT=example-mdm                       # your project ID
+SA=vaanarsena-amapi@$PROJECT.iam.gserviceaccount.com
+
+gcloud projects create $PROJECT                    # skip if it exists
+gcloud services enable androidmanagement.googleapis.com --project=$PROJECT
+gcloud iam service-accounts create vaanarsena-amapi \
+  --display-name="VaanarSena Android management" --project=$PROJECT
+gcloud projects add-iam-policy-binding $PROJECT --condition=None \
+  --member="serviceAccount:$SA" --role=roles/androidmanagement.user
+gcloud iam service-accounts keys create vaanarsena-amapi.json \
+  --iam-account=$SA --project=$PROJECT
+```
+
+In VaanarSena, **Settings > Platforms > Google service account**: choose
+`vaanarsena-amapi.json` (the project ID is read from it) and **Save key**.
+Then delete the local file: the key is stored encrypted on the server, and
+anyone holding the file can manage your enterprise.
+
+If key creation fails with `constraints/iam.disableServiceAccountKeyCreation`,
+your Google Cloud organization blocks service account keys (the default for
+organizations created since 2024). An organization policy administrator can
+allow it for this project only:
+
+```bash
+gcloud resource-manager org-policies disable-enforce \
+  iam.disableServiceAccountKeyCreation --project=$PROJECT
+```
+
+The console works too: **APIs & Services > Library** (Android Management
+API), **IAM & Admin > Service accounts** (create, role *Android Management
+User*), then **Keys > Add key > JSON**.
+
+**Moving to another project** (for example from a personal account to the
+organization's): choose **Replace key** with the new key, **Remove** on the
+Android Enterprise card, connect a new enterprise (step 2) and re-enroll
+devices; an enterprise belongs to the project it was created with. Then delete the old
+key: `gcloud iam service-accounts keys list --iam-account=<old SA>` and
+`gcloud iam service-accounts keys delete <key id> --iam-account=<old SA>`.
 
 ### 2. Connect the Android Enterprise
 
