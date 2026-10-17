@@ -116,13 +116,25 @@ reuse it every year to sign the renewal request.
 
 ### Community signing services
 
-Services such as mdmcert.download sign push requests for organizations that
-have no vendor certificate of their own. They also accept only legally
-recognized organizations, not individuals. Their client protocol (the MDM
-server submits the request with an encryption certificate, and the signed
-request comes back encrypted by email) is not built into VaanarSena, because
-it is not publicly documented. Use one only if the service gives you a signed
-request you can upload to Apple yourself.
+Services such as [mdmcert.download](https://mdmcert.download) sign push
+requests for organizations that have no vendor certificate of their own.
+VaanarSena does not support mdmcert.download today:
+
+- **Organizations only.** Registration asks for your organization, title,
+  telephone and organization address, and only an organization email
+  address is accepted: free and disposable addresses (Gmail and similar)
+  are blocked to prevent individual use and personal devices. You must
+  accept the service's terms, which are shown only after registering.
+- **No public client protocol.** Its instructions describe the steps only at
+  a high level: the MDM server creates an encryption certificate and the push
+  request and submits them to the service's web API, the signed request comes
+  back encrypted by email, and the MDM server decrypts it for you to upload
+  to Apple. The API endpoint, API key, request and reply formats and the
+  decryption step are not documented, and the service expects an MDM that
+  already has this client built in. VaanarSena does not, and will not copy
+  one from another MDM.
+- **Revocable.** The service warns that Apple can revoke certificates
+  issued this way at any time.
 
 There is no route for individuals or test setups without an organization:
 APNs is the only way to wake an Apple device, so without a push certificate
