@@ -10,9 +10,9 @@ Minimum role in brackets.
 
 | Method | Path | |
 |---|---|---|
-| POST | `/auth/login` | `{email, password}` -> `{user, token}` |
+| POST | `/auth/login` | `{email, password}` -> `{user, token}`. 401 for a wrong email or password; 403 when the password is right but password sign-in is off for that account (`VS_PASSWORD_LOGIN`) |
 | POST | `/auth/logout` | clears the session cookie |
-| GET | `/auth/providers` | unauthenticated: `{password: true, oidc: {enabled, name}}` for the sign-in page |
+| GET | `/auth/providers` | unauthenticated: `{password, passwordRestricted, oidc: {enabled, name}}` for the sign-in page. `password` is false when password sign-in is off; `passwordRestricted` is true when only break-glass accounts may still use it |
 | GET | `/auth/oidc/start?next=` | unauthenticated: redirects to the identity provider; `next` is a path on this site. See [sso.md](sso.md) |
 | GET | `/auth/oidc/callback` | unauthenticated: the provider's redirect target; sets the session cookie and redirects to `next`, or to `/login?sso_error=<code>` |
 | GET | `/auth/me` | [auditor] current user; `sso` and `hasPassword` tell how they sign in |

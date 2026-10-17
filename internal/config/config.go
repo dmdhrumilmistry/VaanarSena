@@ -71,6 +71,11 @@ type Config struct {
 	OIDCAllowedDomains []string
 	// OIDCTrustUnverifiedEmail accepts emails without email_verified: true.
 	OIDCTrustUnverifiedEmail bool
+
+	// PasswordLogin allows console sign-in with a password for every user.
+	// When false, only PasswordLoginAllow may (break-glass admins).
+	PasswordLogin      bool
+	PasswordLoginAllow []string
 }
 
 // Load reads configuration from the environment and validates it.
@@ -103,6 +108,8 @@ func Load() (*Config, error) {
 		OIDCGroupsClaim:          os.Getenv("VS_OIDC_GROUPS_CLAIM"),
 		OIDCAllowedDomains:       List("VS_OIDC_ALLOWED_DOMAINS"),
 		OIDCTrustUnverifiedEmail: EnvBool("VS_OIDC_TRUST_UNVERIFIED_EMAIL", false),
+		PasswordLogin:            EnvBool("VS_PASSWORD_LOGIN", true),
+		PasswordLoginAllow:       List("VS_PASSWORD_LOGIN_ALLOW"),
 		OIDCRoleGroups: map[string][]string{
 			"admin":    List("VS_OIDC_ADMIN_GROUPS"),
 			"operator": List("VS_OIDC_OPERATOR_GROUPS"),
@@ -130,6 +137,9 @@ func (c *Config) validate() error {
 	}
 	if (c.APNsCertFile == "") != (c.APNsKeyFile == "") {
 		errs = append(errs, errors.New("VS_APNS_CERT_FILE and VS_APNS_KEY_FILE must be set together"))
+	}
+	if !c.PasswordLogin && c.OIDCIssuer == "" && len(c.PasswordLoginAllow) == 0 {
+		errs = append(errs, errors.New("VS_PASSWORD_LOGIN=false needs single sign-on (VS_OIDC_ISSUER) or a break-glass admin in VS_PASSWORD_LOGIN_ALLOW; otherwise nobody can sign in"))
 	}
 	if !strings.HasPrefix(c.PublicURL, "https://") && !strings.HasPrefix(c.PublicURL, "http://") {
 		errs = append(errs, errors.New("VS_PUBLIC_URL must start with https:// or http://"))

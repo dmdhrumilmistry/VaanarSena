@@ -35,6 +35,8 @@ provider. Password sign-in keeps working. See [sso.md](sso.md).
 | `VS_OIDC_GROUPS_CLAIM` | `groups` | ID token claim that lists the user's groups. |
 | `VS_OIDC_ADMIN_GROUPS` / `VS_OIDC_OPERATOR_GROUPS` / `VS_OIDC_AUDITOR_GROUPS` | | Comma-separated groups that grant each role. When any is set, groups decide the role at every sign-in and accounts are created on first sign-in. |
 | `VS_OIDC_ALLOWED_DOMAINS` | | Comma-separated email domains allowed to use SSO. |
+| `VS_PASSWORD_LOGIN` | `true` | `false` turns off console sign-in with a password, except for the accounts in `VS_PASSWORD_LOGIN_ALLOW`. API tokens keep working. The server refuses to start if this would leave no way to sign in. |
+| `VS_PASSWORD_LOGIN_ALLOW` | | Comma-separated break-glass emails that may still sign in with a password when `VS_PASSWORD_LOGIN=false`, for when the identity provider is unavailable. |
 | `VS_OIDC_TRUST_UNVERIFIED_EMAIL` | `false` | Link and create accounts from emails the provider does not mark `email_verified: true`. Only for providers that never send the claim and do not let users choose their address. See [sso.md](sso.md). |
 
 The redirect URI to register with the provider is

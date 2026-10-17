@@ -217,6 +217,14 @@ func serve() error {
 	mux := http.NewServeMux()
 	secure := strings.HasPrefix(cfg.PublicURL, "https://")
 	authn := auth.New(st, box, cfg.SessionTTL, secure)
+	if !cfg.PasswordLogin {
+		allow := map[string]bool{}
+		for _, e := range cfg.PasswordLoginAllow {
+			allow[strings.ToLower(e)] = true
+		}
+		authn.Password = &auth.PasswordPolicy{Allow: allow}
+		log.Info("password sign-in restricted", "breakGlassAccounts", len(allow))
+	}
 	apiSrv := &api.API{Store: st, Auth: authn, Svc: svc, CA: ca, PublicURL: cfg.PublicURL, Org: cfg.OrgName, Box: box, Version: version, Log: log}
 	if cfg.OIDCIssuer != "" {
 		apiSrv.OIDC, err = auth.NewOIDC(auth.OIDCConfig{

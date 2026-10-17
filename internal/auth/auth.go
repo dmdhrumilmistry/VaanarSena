@@ -53,7 +53,33 @@ type Authenticator struct {
 	ttl     time.Duration
 	secure  bool
 	limiter *loginLimiter
+	// Password decides who may sign in with a password; nil allows everyone.
+	Password *PasswordPolicy
 }
+
+// PasswordPolicy restricts password sign-in, typically once single sign-on is
+// in place. API tokens are not affected.
+type PasswordPolicy struct {
+	// Enabled allows password sign-in for every user.
+	Enabled bool
+	// Allow lists the (lowercase) emails that may still sign in with a
+	// password when Enabled is false: break-glass admins for when single
+	// sign-on is unavailable.
+	Allow map[string]bool
+}
+
+// Permits reports whether email may sign in with a password.
+func (p *PasswordPolicy) Permits(email string) bool {
+	return p == nil || p.Enabled || p.Allow[strings.ToLower(email)]
+}
+
+// Restricted reports whether password sign-in is off except for some users.
+func (p *PasswordPolicy) Restricted() bool { return p != nil && !p.Enabled && len(p.Allow) > 0 }
+
+// ErrPasswordLoginDisabled is returned when the password was right but the
+// user may not sign in with one. It is only returned after the password has
+// been verified, so it does not reveal which emails are allowed.
+var ErrPasswordLoginDisabled = errors.New("password sign-in is disabled for this account; use single sign-on")
 
 // New returns an Authenticator. secure sets the Secure flag on cookies.
 func New(st *store.Store, box *secrets.Box, ttl time.Duration, secure bool) *Authenticator {
@@ -84,6 +110,9 @@ func (a *Authenticator) Login(ctx context.Context, email, password, remoteIP str
 	if bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(password)) != nil || u.Disabled {
 		a.limiter.fail(key)
 		return "", nil, ErrInvalidCredentials
+	}
+	if !a.Password.Permits(u.Email) {
+		return "", u, ErrPasswordLoginDisabled
 	}
 	a.limiter.reset(key)
 	_ = a.st.TouchLogin(ctx, u.ID)

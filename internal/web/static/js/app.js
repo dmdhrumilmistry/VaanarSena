@@ -233,17 +233,31 @@ const SSO_ERRORS = {
   no_email: "Your identity provider did not share your email address. Ask an administrator to check the single sign-on setup.",
 };
 
-// ssoBlock fills host with the single sign-on button when the server offers it,
-// and makes the password button secondary so SSO reads as the way in.
-async function ssoBlock(host, passwordBtn) {
+// loginOptions applies what the server offers: the single sign-on button
+// (then the password button becomes secondary), and no password form when
+// password sign-in is off, or the form behind a link when only break-glass
+// administrators may use it. The server enforces this either way; if the
+// options cannot be read, the form stays.
+async function loginOptions(host, form, passwordBtn, fine) {
   let p;
   try { p = await api("GET", "/auth/providers"); } catch { return; }
-  if (!p.oidc || !p.oidc.enabled) return;
-  const here = location.pathname === "/login" ? "/" : location.pathname + location.search;
-  host.replaceChildren(
-    h("a", { class: "btn primary sso-btn", href: "/api/v1/auth/oidc/start?next=" + encodeURIComponent(here) }, icon("lock"), "Sign in with " + p.oidc.name),
-    h("div", { class: "divider-label" }, "or use a password"));
-  passwordBtn.classList.remove("primary");
+  const sso = p.oidc && p.oidc.enabled;
+  const passwords = p.password !== false;
+  if (sso) {
+    const here = location.pathname === "/login" ? "/" : location.pathname + location.search;
+    host.replaceChildren(...[
+      h("a", { class: "btn primary sso-btn", href: "/api/v1/auth/oidc/start?next=" + encodeURIComponent(here) }, icon("lock"), "Sign in with " + p.oidc.name),
+      passwords ? h("div", { class: "divider-label" }, "or use a password") : null].filter(Boolean));
+    passwordBtn.classList.remove("primary");
+  }
+  if (passwords) return;
+  form.hidden = true; fine.hidden = true;
+  if (!p.passwordRestricted) return;
+  const reveal = h("button", { type: "button", class: "btn quiet small login-breakglass", "aria-expanded": "false", onclick: () => {
+    form.hidden = false; reveal.remove();
+    form.querySelector("input").focus();
+  } }, "Administrator sign-in with a password");
+  form.before(reveal);
 }
 
 function loginView() {
@@ -263,7 +277,8 @@ function loginView() {
     err, btn);
   const ssoErr = new URLSearchParams(location.search).get("sso_error");
   const sso = h("div", { class: "sso" });
-  ssoBlock(sso, btn);
+  const fine = h("p", { class: "fine" }, "Forgot your password? Ask an administrator to set a new one under Users.");
+  loginOptions(sso, form, btn, fine);
   return h("div", { class: "login" },
     h("div", { class: "form-side" },
       h("div", { class: "form-wrap" },
@@ -272,7 +287,7 @@ function loginView() {
         ssoErr ? h("div", { role: "alert" }, notice("bad", SSO_ERRORS[ssoErr] || "Single sign-on failed. Try again.")) : null,
         sso,
         form,
-        h("p", { class: "fine" }, "Forgot your password? Ask an administrator to set a new one under Users."))),
+        fine)),
     h("div", { class: "sky" },
       h("div", { class: "top" }, h("span", {}, "Open source device management")),
       h("img", { class: "hero", src: "/brand/lockup-dark.webp", alt: "VaanarSena: Hanuman leaping with the Dronagiri mountain raised in one hand" }),
